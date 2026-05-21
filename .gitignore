@@ -13,3 +13,4 @@ dist/
 .agents/skills/
 .DS_Store
 *.log
+.vercel

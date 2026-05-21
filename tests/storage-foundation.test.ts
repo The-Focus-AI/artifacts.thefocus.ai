@@ -16,6 +16,7 @@ const basePublication = {
   publisherEmail: "publisher@thefocus.ai",
   status: "active" as const,
   activeManifestRef: "manifest-1",
+  activeArtifactLocator: "blob://artifacts/Ab3xY9kQ/manifest-1/index.html",
   localSourcePath: "/Users/example/report",
   revisionWindowExpiresAt: new Date("2026-05-20T12:15:00.000Z"),
 };
@@ -32,6 +33,7 @@ describe("Publication metadata storage", () => {
       publisherEmail: "publisher@thefocus.ai",
       status: "active",
       activeManifestRef: "manifest-1",
+      activeArtifactLocator: "blob://artifacts/Ab3xY9kQ/manifest-1/index.html",
       localSourcePath: "/Users/example/report",
     });
     expect(created.publicationUrlPath).toBe("/a/Ab3xY9kQ");
@@ -158,10 +160,11 @@ class RecordingSqlClient implements SqlClient {
         publisher_email: params[2],
         status: params[3],
         active_manifest_ref: params[4],
-        local_source_path: params[5],
-        revision_window_expires_at: params[6],
-        created_at: params[7],
-        updated_at: params[8],
+        active_artifact_locator: params[5],
+        local_source_path: params[6],
+        revision_window_expires_at: params[7],
+        created_at: params[8],
+        updated_at: params[9],
         removed_at: null,
       };
       this.rows.set(String(params[0]), row);
@@ -189,9 +192,10 @@ class RecordingSqlClient implements SqlClient {
       const row = this.rows.get(String(params[0]));
       if (!row) return { rows: [] };
       row.active_manifest_ref = params[1];
-      row.revision_window_expires_at = params[2];
-      row.local_source_path = params[3];
-      row.updated_at = params[4];
+      row.active_artifact_locator = params[2];
+      row.revision_window_expires_at = params[3];
+      row.local_source_path = params[4];
+      row.updated_at = params[5];
       return { rows: [row as T] };
     }
 
