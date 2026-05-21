@@ -10,6 +10,12 @@ import {
 } from "node:path";
 
 import {
+  authenticatePublisherToken,
+  createNeonPublisherTokenStore,
+  type PublisherTokenStore,
+} from "./auth.js";
+import { resolvePublisherToken } from "./local-config.js";
+import {
   type ArtifactContentStore,
   VercelBlobArtifactContentStore,
 } from "./storage/artifact-content.js";
@@ -317,21 +323,50 @@ function createManifestRef(body: Buffer): string {
   return `${Date.now().toString(36)}-${hash}-${randomUUID().slice(0, 8)}`;
 }
 
+export async function publishSingleFileArtifactWithPublisherToken(input: {
+  filePath: string;
+  publisherToken: string;
+  publicBaseUrl: string;
+  metadataStore: PublicationMetadataStore;
+  contentStore: ArtifactContentStore;
+  tokenStore: PublisherTokenStore;
+}): Promise<PublishSingleFileArtifactResult> {
+  const publisherEmail = await authenticatePublisherToken({
+    token: input.publisherToken,
+    store: input.tokenStore,
+  });
+  return publishSingleFileArtifact({
+    filePath: input.filePath,
+    publicBaseUrl: input.publicBaseUrl,
+    publisherEmail,
+    metadataStore: input.metadataStore,
+    contentStore: input.contentStore,
+  });
+}
+
 export async function publishArtifactFromEnvironment(
   sourcePath: string,
   options: {
     publicBaseUrl?: string;
-    publisherEmail?: string;
     entryPage?: string;
+    env?: NodeJS.ProcessEnv;
+    configDir?: string;
   } = {},
 ): Promise<PublishSingleFileArtifactResult | PublishDirectoryArtifactResult> {
+  const env = options.env ?? process.env;
+  const token = await resolvePublisherToken({
+    env,
+    configDir: options.configDir,
+  });
+  if (!token.token) throw new Error("A valid Publisher Token is required");
+  const publisherEmail = await authenticatePublisherToken({
+    token: token.token,
+    store: createNeonPublisherTokenStore(),
+  });
   const dependencies = {
     publicBaseUrl:
       options.publicBaseUrl ?? requiredEnv("ARTIFACTS_PUBLIC_BASE_URL"),
-    publisherEmail:
-      options.publisherEmail ??
-      process.env.ARTIFACTS_PUBLISHER_EMAIL ??
-      `${process.env.USER ?? "publisher"}@thefocus.ai`,
+    publisherEmail,
     metadataStore: createNeonPublicationMetadataStore(),
     contentStore: new VercelBlobArtifactContentStore(),
   };
@@ -349,18 +384,17 @@ export async function publishArtifactFromEnvironment(
 
 export async function publishSingleFileArtifactFromEnvironment(
   filePath: string,
-  options: { publicBaseUrl?: string; publisherEmail?: string } = {},
+  options: { publicBaseUrl?: string } = {},
 ): Promise<PublishSingleFileArtifactResult> {
-  return publishSingleFileArtifact({
+  const token = await resolvePublisherToken();
+  return publishSingleFileArtifactWithPublisherToken({
     filePath,
     publicBaseUrl:
       options.publicBaseUrl ?? requiredEnv("ARTIFACTS_PUBLIC_BASE_URL"),
-    publisherEmail:
-      options.publisherEmail ??
-      process.env.ARTIFACTS_PUBLISHER_EMAIL ??
-      `${process.env.USER ?? "publisher"}@thefocus.ai`,
+    publisherToken: token.token ?? requiredEnv("THEFOCUS_ARTIFACTS_TOKEN"),
     metadataStore: createNeonPublicationMetadataStore(),
     contentStore: new VercelBlobArtifactContentStore(),
+    tokenStore: createNeonPublisherTokenStore(),
   });
 }
 
