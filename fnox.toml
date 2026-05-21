@@ -17,3 +17,21 @@ provider = "op"
 value = "BLOB_READ_WRITE_TOKEN"
 if_missing = "ignore"
 description = "Vercel Blob read/write token — https://vercel.com/dashboard/stores"
+
+[secrets.CLERK_SECRET_KEY]
+provider = "op"
+value = "CLERK_SECRET_KEY"
+if_missing = "ignore"
+description = "Clerk backend secret key — https://dashboard.clerk.com"
+
+[secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY]
+provider = "op"
+value = "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"
+if_missing = "ignore"
+description = "Clerk frontend publishable key — https://dashboard.clerk.com"
+
+[secrets.CLERK_SIGN_IN_DOMAIN]
+provider = "op"
+value = "CLERK_SIGN_IN_DOMAIN"
+if_missing = "ignore"
+description = "Clerk sign-in domain from dashboard → Domains (e.g. capital-panther-42.clerk.accounts.dev)"

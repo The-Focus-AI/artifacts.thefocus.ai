@@ -25,21 +25,50 @@ function streamCapture() {
 }
 
 describe("CLI Publisher Token commands", () => {
-  it("prints a browser login URL when login cannot complete locally", async () => {
+  it("completes browser login flow and stores the token automatically", async () => {
+    const configDir = await mkdtemp(join(tmpdir(), "artifacts-cli-"));
     const stdout = streamCapture();
     const stderr = streamCapture();
 
     const exitCode = await runCli(
       ["login", "--base-url", "https://preview.test"],
       {
+        configDir,
         stdout: stdout.stream,
         stderr: stderr.stream,
+        loginFlow: async () => ({ token: "tfai_pub_browser_flow" }),
       },
     );
 
     expect(exitCode).toBe(0);
-    expect(stdout.text()).toContain("https://preview.test/login?cli=1");
+    expect(stdout.text()).toContain("Opening browser to complete login...");
+    expect(stdout.text()).toContain("https://preview.test/login");
+    expect(stdout.text()).toContain("Publisher Token stored");
     expect(stderr.text()).toBe("");
+    await expect(
+      readFile(configFilePath(configDir), "utf8"),
+    ).resolves.toContain("tfai_pub_browser_flow");
+  });
+
+  it("reports login errors from the browser flow on stderr", async () => {
+    const configDir = await mkdtemp(join(tmpdir(), "artifacts-cli-"));
+    const stdout = streamCapture();
+    const stderr = streamCapture();
+
+    const exitCode = await runCli(
+      ["login", "--base-url", "https://preview.test"],
+      {
+        configDir,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        loginFlow: async () => {
+          throw new Error("non-@thefocus.ai email rejected");
+        },
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderr.text()).toContain("non-@thefocus.ai email rejected");
   });
 
   it("stores a Publisher Token locally for callback-driven login", async () => {
