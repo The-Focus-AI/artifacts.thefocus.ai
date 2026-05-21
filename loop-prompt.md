@@ -8,7 +8,13 @@ the other issues to see which you are able to work on.
 Pick the most effective issue to work on, and mark it as agent-active. Only do one
 issue at a time.
 
-Spin up a workstree in a termorary area, and start building. Write tests first
+Spin up a workstree in a temporary area.  Do web research on all of the technologies
+that you are working on, and put them into the reports directory.  It is important to
+look for best practices and other expected challenges with the libraries and tools you
+might be using.  Have a clear plan of how the libraries will work.  Use subagents for this
+so that you don't pollute the context.
+
+Then start building. Write tests first
 and then validate that they are working. Inside of the PR request, describe what you've
 built, and then list out all of the success criteria that was mentioned in the original
 ticket. For each, have copy and pastable steps to validate that the criteria is
