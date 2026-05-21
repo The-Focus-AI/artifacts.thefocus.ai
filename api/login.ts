@@ -1,26 +1,25 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 export default async function handler(
-  request: IncomingMessage,
-  response: ServerResponse,
+	request: IncomingMessage,
+	response: ServerResponse,
 ): Promise<void> {
-  const url = requestToUrl(request);
-  const port = url.searchParams.get("port") ?? "";
+	const url = requestToUrl(request);
+	const port = url.searchParams.get("port") ?? "";
 
-  const clerkDomain =
-    process.env["CLERK_SIGN_IN_DOMAIN"] ??
-    "possible-shrew-37.accounts.dev";
-  // Clerk JS SDK is served from the .clerk subdomain
-  const clerkCdn = clerkDomain.replace(".accounts.dev", ".clerk.accounts.dev");
-  const publishableKey = process.env["NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"] ?? "";
+	const clerkDomain =
+		process.env["CLERK_SIGN_IN_DOMAIN"] ?? "possible-shrew-37.accounts.dev";
+	// Clerk JS SDK is served from the .clerk subdomain
+	const clerkCdn = clerkDomain.replace(".accounts.dev", ".clerk.accounts.dev");
+	const publishableKey = process.env["NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"] ?? "";
 
-  // Build the callback URL — where Clerk redirects after sign-in
-  const callbackOrigin = `${url.protocol}//${url.host}`;
-  const callbackPath = port
-    ? `/login/callback?port=${port}`
-    : `/login/callback`;
+	// Build the callback URL — where Clerk redirects after sign-in
+	const callbackOrigin = `${url.protocol}//${url.host}`;
+	const callbackPath = port
+		? `/login/callback?port=${port}`
+		: `/login/callback`;
 
-  const html = `<!doctype html>
+	const html = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -48,6 +47,17 @@ export default async function handler(
     data-clerk-publishable-key="${publishableKey}"
     data-clerk-sign-in-url="/login"
     data-clerk-after-sign-in-url="${callbackOrigin}${callbackPath}"
+  ></script>
+  <link
+    rel="preload"
+    href="https://${clerkCdn}/npm/@clerk/ui@1/dist/ui.browser.js"
+    as="script"
+    crossorigin="anonymous"
+  />
+  <script
+    async
+    crossorigin="anonymous"
+    src="https://${clerkCdn}/npm/@clerk/ui@1/dist/ui.browser.js"
   ></script>
 </head>
 <body>
@@ -81,12 +91,12 @@ export default async function handler(
 </body>
 </html>`;
 
-  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-  response.end(html);
+	response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+	response.end(html);
 }
 
 function requestToUrl(request: IncomingMessage): URL {
-  const host = request.headers.host ?? "localhost";
-  const protocol = request.headers["x-forwarded-proto"] ?? "https";
-  return new URL(request.url ?? "/", `${protocol}://${host}`);
+	const host = request.headers.host ?? "localhost";
+	const protocol = request.headers["x-forwarded-proto"] ?? "https";
+	return new URL(request.url ?? "/", `${protocol}://${host}`);
 }
