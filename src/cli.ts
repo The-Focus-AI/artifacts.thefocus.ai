@@ -16,15 +16,21 @@ import {
 import type { BrowserLoginResult } from "./login-flow.js";
 import { loginWithBrowserFlow } from "./login-flow.js";
 import {
+  absolutePublicationUrl,
   publishArtifactFromEnvironment,
   publishArtifactSummary,
 } from "./publication.js";
+import {
+  createNeonPublicationMetadataStore,
+  type PublicationMetadataStore,
+} from "./storage/publication-metadata.js";
 
 export interface CliDependencies {
   env?: NodeJS.ProcessEnv;
   stdout?: Pick<NodeJS.WriteStream, "write">;
   stderr?: Pick<NodeJS.WriteStream, "write">;
   tokenStore?: PublisherTokenStore;
+  metadataStore?: PublicationMetadataStore;
   configDir?: string;
   openBrowser?: (url: string) => Promise<void>;
   loginFlow?: (deps: {
@@ -106,6 +112,27 @@ export async function runCli(
       return 0;
     }
 
+    if (command === "list") {
+      const token = await resolvePublisherToken({ env, configDir });
+      if (!token.token) throw new Error("A valid Publisher Token is required");
+      const publisherEmail = await authenticatePublisherToken({
+        token: token.token,
+        store: dependencies.tokenStore ?? createNeonPublisherTokenStore(),
+      });
+      const publications = await (
+        dependencies.metadataStore ?? createNeonPublicationMetadataStore()
+      ).listByPublisherEmail(publisherEmail);
+      stdout.write(
+        `${formatPublicationList(publications, {
+          publicBaseUrl:
+            options["base-url"] ??
+            env.ARTIFACTS_PUBLIC_BASE_URL ??
+            "https://artifacts.thefocus.ai",
+        })}\n`,
+      );
+      return 0;
+    }
+
     printUsage(stderr);
     return 1;
   } catch (error) {
@@ -135,11 +162,36 @@ function parseFlags(flags: string[]): Record<string, string | undefined> {
   return parsed;
 }
 
+function formatPublicationList(
+  publications: Awaited<
+    ReturnType<PublicationMetadataStore["listByPublisherEmail"]>
+  >,
+  options: { publicBaseUrl: string },
+): string {
+  const lines = ["LAST UPDATED              STATUS    PUBLICATION URL"];
+  if (publications.length === 0) {
+    lines.push("No Publications found.");
+    return lines.join("\n");
+  }
+  for (const publication of publications) {
+    lines.push(
+      `${publication.updatedAt.toISOString()}  ${publication.status.padEnd(
+        8,
+      )} ${absolutePublicationUrl(
+        options.publicBaseUrl,
+        publication.publicationUrlPath,
+      )}`,
+    );
+  }
+  return lines.join("\n");
+}
+
 function printUsage(stderr: Pick<NodeJS.WriteStream, "write">): void {
   stderr.write(
-    "Usage: artifacts <login|logout|whoami|publish>\n" +
+    "Usage: artifacts <login|logout|whoami|publish|list>\n" +
       "  artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
       "  artifacts publish <file.html|directory> [--entry-page index.html] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose]\n" +
+      "  artifacts list [--base-url https://artifacts.thefocus.ai]\n" +
       "  artifacts whoami\n" +
       "  artifacts logout\n",
   );
