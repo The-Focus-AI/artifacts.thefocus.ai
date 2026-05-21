@@ -45,15 +45,7 @@ export async function handleLoginCallback(
 	// Verify the Clerk session
 	let verification: ClerkVerification | null;
 	try {
-		const requestHeaders: Record<string, string> = {};
-		for (const [key, value] of Object.entries(nodeRequest.headers)) {
-			if (typeof value === "string") requestHeaders[key] = value;
-			else if (Array.isArray(value)) requestHeaders[key] = value[0] ?? "";
-		}
-		verification = await deps.clerk.verifyRequest(
-			url.toString(),
-			requestHeaders,
-		);
+		verification = await deps.clerk.verifyRequest(url.toString());
 	} catch {
 		showError(nodeResponse, "Authentication failed. Please try again.");
 		return;
