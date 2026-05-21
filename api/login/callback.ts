@@ -39,7 +39,8 @@ export async function handleLoginCallback(
 	const url = requestToUrl(nodeRequest);
 	// Port from query param (direct callback) or cookie (routed via root page)
 	const portParam =
-		url.searchParams.get("port") ?? readCookie(nodeRequest, "artifacts_login_port");
+		url.searchParams.get("port") ??
+		readCookie(nodeRequest, "artifacts_login_port");
 
 	// Verify the Clerk session
 	let verification: ClerkVerification | null;
@@ -150,10 +151,7 @@ function escapeHtml(text: string): string {
 		.replaceAll("'", "&#39;");
 }
 
-function readCookie(
-	request: IncomingMessage,
-	name: string,
-): string | null {
+function readCookie(request: IncomingMessage, name: string): string | null {
 	const cookieHeader = request.headers.cookie;
 	if (!cookieHeader) return null;
 	for (const cookie of cookieHeader.split(";")) {
