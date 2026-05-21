@@ -1,22 +1,23 @@
 #!/usr/bin/env node
 
 import {
-  publishSingleFileArtifactFromEnvironment,
+  publishArtifactFromEnvironment,
   singleFilePublishSummary,
 } from "./publication.js";
 
 async function main(argv: string[]): Promise<void> {
-  const [command, filePath, ...flags] = argv;
-  if (command !== "publish" || !filePath) {
+  const [command, sourcePath, ...flags] = argv;
+  if (command !== "publish" || !sourcePath) {
     printUsage();
     process.exitCode = 1;
     return;
   }
 
   const options = parseFlags(flags);
-  const result = await publishSingleFileArtifactFromEnvironment(filePath, {
+  const result = await publishArtifactFromEnvironment(sourcePath, {
     publicBaseUrl: options["base-url"],
     publisherEmail: options["publisher-email"],
+    entryPage: options["entry-page"],
   });
   console.log(singleFilePublishSummary(result));
 }
@@ -35,7 +36,7 @@ function parseFlags(flags: string[]): Record<string, string | undefined> {
 
 function printUsage(): void {
   console.error(
-    "Usage: artifacts publish <file.html> [--base-url https://artifacts.thefocus.ai] [--publisher-email you@thefocus.ai]",
+    "Usage: artifacts publish <file.html|directory> [--entry-page index.html] [--base-url https://artifacts.thefocus.ai] [--publisher-email you@thefocus.ai]",
   );
 }
 

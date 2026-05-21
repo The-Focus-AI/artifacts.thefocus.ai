@@ -7,7 +7,7 @@ import { publicationRequestUrl } from "../src/http.js";
 describe("Vercel Publication routing", () => {
   it("maps rewritten /api/a/{opaque} function requests back to canonical /a/{opaque} Publication URLs", () => {
     const request = {
-      url: "/api/a/Ab3xY9kQ",
+      url: "/api/a/Ab3xY9kQ/assets/app.js",
       headers: {
         host: "artifacts.thefocus.ai",
         "x-forwarded-proto": "https",
@@ -15,7 +15,7 @@ describe("Vercel Publication routing", () => {
     };
 
     expect(publicationRequestUrl(request as unknown as IncomingMessage)).toBe(
-      "https://artifacts.thefocus.ai/a/Ab3xY9kQ",
+      "https://artifacts.thefocus.ai/a/Ab3xY9kQ/assets/app.js",
     );
   });
 

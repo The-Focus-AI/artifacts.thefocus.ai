@@ -19,9 +19,9 @@ See [docs/development.md](docs/development.md) for the Neon/Postgres and Vercel 
 
 See [docs/deploy.md](docs/deploy.md) for Vercel project, custom domain, pull-request Preview deployment, and live smoke-test instructions.
 
-## Single-file publishing
+## Publishing Artifacts
 
-The first tracer-bullet publishing path accepts one local HTML file and returns a canonical unlisted Publication URL:
+The publishing path accepts one local HTML file or one local directory and returns a canonical unlisted Publication URL:
 
 ```bash
 ARTIFACTS_PUBLIC_BASE_URL=https://your-vercel-host.example \
@@ -29,4 +29,14 @@ ARTIFACTS_PUBLISHER_EMAIL=you@thefocus.ai \
 fnox exec -- pnpm artifacts publish ./artifact.html
 ```
 
-`ARTIFACTS_PUBLIC_BASE_URL` must be the actual Vercel production or preview host that serves this app. Published single-file Artifacts are served by the Vercel rewrite from `/a/{opaque}` to the API function at `/api/a/{opaque}` with `Cache-Control: no-store` and `X-Robots-Tag: noindex, nofollow` headers.
+Directory Artifacts require a root `index.html` by default and preserve nested Artifact Paths:
+
+```bash
+ARTIFACTS_PUBLIC_BASE_URL=https://your-vercel-host.example \
+ARTIFACTS_PUBLISHER_EMAIL=you@thefocus.ai \
+fnox exec -- pnpm artifacts publish ./dist
+```
+
+Use `--entry-page path/to/page.html` to choose a different HTML Entry Page inside a directory Artifact.
+
+`ARTIFACTS_PUBLIC_BASE_URL` must be the actual Vercel production or preview host that serves this app. Published Artifacts are served by the Vercel rewrite from `/a/{opaque}` and nested `/a/{opaque}/{path}` URLs to the API functions with `Cache-Control: no-store` and `X-Robots-Tag: noindex, nofollow` headers.
