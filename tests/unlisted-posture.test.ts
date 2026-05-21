@@ -34,6 +34,7 @@ describe("minimal landing page", () => {
 			/Publication listing|Recent Publications|<ul[^>]*id="?publications/i,
 		);
 		expect(vercelConfig.rewrites).toEqual([
+			{ source: "/login/callback", destination: "/api/login/callback" },
 			{ source: "/login", destination: "/api/login" },
 			{ source: "/a/:opaque", destination: "/api/a/:opaque" },
 			{ source: "/a/:opaque/:path*", destination: "/api/a/:opaque/:path*" },

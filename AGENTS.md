@@ -41,6 +41,7 @@ Publisher authentication uses Clerk for browser-based login with an automatic to
 5. The CLI receives the token on its localhost server, stores it under `~/.config/thefocus-artifacts/config.json`, and prints success.
 
 Key files:
+
 - `src/auth-clerk.ts` — `ClerkVerifier` interface wrapping `@clerk/backend` for testability
 - `src/login-flow.ts` — CLI localhost callback server + browser opener
 - `api/login.ts` — Vercel serverless function, exports `handleLoginRequest` for testing
