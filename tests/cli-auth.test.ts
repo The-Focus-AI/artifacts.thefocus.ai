@@ -2,7 +2,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   InMemoryPublisherTokenStore,
@@ -121,5 +121,80 @@ describe("CLI Publisher Token commands", () => {
 
     expect(exitCode).toBe(0);
     await expect(readFile(configFilePath(configDir), "utf8")).rejects.toThrow();
+  });
+
+  it("removes a Publication with --yes without prompting", async () => {
+    const stdout = streamCapture();
+    const removePublication = vi.fn(async (publicationUrl: string) => ({
+      opaqueId: "RemoveMe",
+      publicationUrl,
+      status: "removed" as const,
+      deletedLocators: ["blob://one"],
+      clearedLocalSourcePath: "/tmp/artifact",
+    }));
+    const confirmRemoval = vi.fn(async () => false);
+
+    const exitCode = await runCli(
+      ["remove", "https://artifacts.thefocus.ai/a/RemoveMe", "--yes"],
+      {
+        stdout: stdout.stream,
+        removePublication,
+        confirmRemoval,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(confirmRemoval).not.toHaveBeenCalled();
+    expect(removePublication).toHaveBeenCalledWith(
+      "https://artifacts.thefocus.ai/a/RemoveMe",
+    );
+    expect(stdout.text()).toContain(
+      "Removed https://artifacts.thefocus.ai/a/RemoveMe",
+    );
+  });
+
+  it("asks for confirmation before interactive Removal", async () => {
+    const stdout = streamCapture();
+    const removePublication = vi.fn(async (publicationUrl: string) => ({
+      opaqueId: "RemoveMe",
+      publicationUrl,
+      status: "removed" as const,
+      deletedLocators: [],
+      clearedLocalSourcePath: null,
+    }));
+    const confirmRemoval = vi.fn(async () => true);
+
+    const exitCode = await runCli(
+      ["remove", "https://artifacts.thefocus.ai/a/RemoveMe"],
+      {
+        stdout: stdout.stream,
+        removePublication,
+        confirmRemoval,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(confirmRemoval).toHaveBeenCalledWith(
+      "https://artifacts.thefocus.ai/a/RemoveMe",
+    );
+    expect(removePublication).toHaveBeenCalledOnce();
+  });
+
+  it("cancels Removal when confirmation is declined", async () => {
+    const stdout = streamCapture();
+    const removePublication = vi.fn();
+
+    const exitCode = await runCli(
+      ["remove", "https://artifacts.thefocus.ai/a/RemoveMe"],
+      {
+        stdout: stdout.stream,
+        removePublication,
+        confirmRemoval: async () => false,
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(removePublication).not.toHaveBeenCalled();
+    expect(stdout.text()).toContain("Removal cancelled.");
   });
 });
