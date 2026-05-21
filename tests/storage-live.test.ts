@@ -26,6 +26,7 @@ describeWithDatabase("live Neon/Postgres Publication metadata storage", () => {
         opaqueId,
         publisherEmail: "storage-test@thefocus.ai",
         activeManifestRef: "manifest-live-1",
+        activeArtifactLocator: "blob://live-test/manifest-live-1/index.html",
         localSourcePath: "/tmp/thefocus-artifacts-live-test",
         revisionWindowExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
       });
@@ -38,6 +39,7 @@ describeWithDatabase("live Neon/Postgres Publication metadata storage", () => {
 
       const updated = await store.update(opaqueId, {
         activeManifestRef: "manifest-live-2",
+        activeArtifactLocator: "blob://live-test/manifest-live-2/index.html",
         revisionWindowExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
       });
       expect(updated?.activeManifestRef).toBe("manifest-live-2");
@@ -100,10 +102,14 @@ interface MigrationSqlClient {
 }
 
 async function applyMigration(sql: MigrationSqlClient) {
-  const migration = readFileSync(
-    join(process.cwd(), "migrations/0001_publications.sql"),
-    "utf8",
-  );
+  const migration = [
+    "0001_publications.sql",
+    "0002_add_active_artifact_locator.sql",
+  ]
+    .map((fileName) =>
+      readFileSync(join(process.cwd(), "migrations", fileName), "utf8"),
+    )
+    .join("\n");
   for (const statement of migration
     .split(";")
     .map((part) => part.trim())

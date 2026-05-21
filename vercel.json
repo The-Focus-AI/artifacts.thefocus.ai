@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/a/:opaque",
+      "destination": "/api/a/:opaque"
+    }
+  ]
+}
