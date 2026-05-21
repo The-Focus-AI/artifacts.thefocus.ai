@@ -14,12 +14,11 @@ class FakeClerkVerifier {
     this.email = email;
   }
 
-  buildSignInUrl(_url: string): string {
-    return "https://clerk.example.com/sign-in";
-  }
-
-  async verifyRequest(_request: IncomingMessage) {
-    return { email: this.email, userId: "test_user_id" };
+  async authenticateRequest(_request: IncomingMessage) {
+    return {
+      kind: "authenticated" as const,
+      verification: { email: this.email, userId: "test_user_id" },
+    };
   }
 }
 
@@ -42,17 +41,15 @@ function createTestResponse(): ServerResponse & {
     statusCode: 0,
     body: "",
     headers: {} as Record<string, string>,
+    setHeader(name: string, value: string) {
+      this.headers[name] = value;
+      return this;
+    },
     writeHead(statusCode: number, headers?: Record<string, string>) {
       this.statusCode = statusCode;
       if (headers) {
-        if ("Location" in headers && typeof headers.Location === "string") {
-          this.headers["Location"] = headers.Location;
-        }
-        if (
-          "Content-Type" in headers &&
-          typeof headers["Content-Type"] === "string"
-        ) {
-          this.headers["Content-Type"] = headers["Content-Type"];
+        for (const [name, value] of Object.entries(headers)) {
+          this.headers[name] = value;
         }
       }
       return this;
@@ -99,6 +96,29 @@ describe("/login/callback route", () => {
     });
   });
 
+  it("forwards Clerk handshake redirects during development auth sync", async () => {
+    const req = createTestRequest("/login/callback?__clerk_db_jwt=dvb_test");
+    const res = createTestResponse();
+    const tokenStore = new InMemoryPublisherTokenStore();
+    const headers = new Headers({
+      Location: "https://clerk.example.com/v1/client/handshake",
+    });
+
+    const clerk = {
+      authenticateRequest: async (_request: IncomingMessage) => ({
+        kind: "redirect" as const,
+        headers,
+      }),
+    };
+
+    await handleLoginCallback(req, res, { clerk, tokenStore });
+
+    expect(res.statusCode).toBe(307);
+    expect(res.headers["Location"]).toBe(
+      "https://clerk.example.com/v1/client/handshake",
+    );
+  });
+
   it("redirects to localhost with error for non-@thefocus.ai email", async () => {
     const req = createTestRequest("/login/callback?port=12345");
     const res = createTestResponse();
@@ -115,7 +135,7 @@ describe("/login/callback route", () => {
     expect(res.headers["Location"]).not.toContain("token=");
   });
 
-  it("shows an error page when non-@thefocus.ai and no localhost port", async () => {
+  it("shows an authorization error page when non-@thefocus.ai and no localhost port", async () => {
     const req = createTestRequest("/login/callback");
     const res = createTestResponse();
     const clerk = new FakeClerkVerifier("outsider@gmail.com");
@@ -123,9 +143,9 @@ describe("/login/callback route", () => {
 
     await handleLoginCallback(req, res, { clerk, tokenStore });
 
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(403);
     expect(res.body).toContain("@thefocus.ai");
-    expect(res.body).toContain("Login failed");
+    expect(res.body).toContain("Login not allowed");
   });
 
   it("shows a token display page when no localhost callback port", async () => {
@@ -150,13 +170,7 @@ describe("/login/callback route", () => {
     const res = createTestResponse();
 
     class ThrowingClerkVerifier {
-      buildSignInUrl(_url: string): string {
-        return "https://clerk.example.com/sign-in";
-      }
-
-      async verifyRequest(
-        _request: IncomingMessage,
-      ): Promise<{ email: string; userId: string } | null> {
+      async authenticateRequest(_request: IncomingMessage): Promise<never> {
         throw new Error("Clerk verification failed");
       }
     }

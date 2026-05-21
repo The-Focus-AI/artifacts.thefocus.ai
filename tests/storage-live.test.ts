@@ -62,7 +62,7 @@ describeWithDatabase("live Neon/Postgres Publication metadata storage", () => {
         opaqueId,
       ]);
     }
-  });
+  }, 30_000);
 });
 
 describeWithBlob("live Vercel Blob Artifact content storage", () => {
