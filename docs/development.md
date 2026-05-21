@@ -28,6 +28,16 @@ Automated tests use in-memory/fake adapters, so they do not require Neon or Verc
 - `createNeonPublicationMetadataStore` for Neon/Postgres-backed metadata.
 - `VercelBlobArtifactContentStore` for Vercel Blob-backed Artifact bytes.
 
+## Live storage verification
+
+When `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` are available, run:
+
+```bash
+pnpm run test:storage:live
+```
+
+This applies `migrations/0001_publications.sql`, creates/reads/updates/lists/marks removed a temporary Publication row in Neon/Postgres, writes/reads/deletes a temporary Artifact object in Vercel Blob, and then cleans up the test data.
+
 ## Verification commands
 
 Use mise so the repo-local toolchain is used:

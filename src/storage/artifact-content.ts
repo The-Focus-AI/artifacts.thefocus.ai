@@ -27,8 +27,8 @@ export interface ArtifactContentRead {
 
 export interface ArtifactContentStore {
   write(input: ArtifactContentWrite): Promise<ArtifactContentLocation>;
-  read(blobPath: string): Promise<ArtifactContentRead | null>;
-  delete(blobPaths: string[]): Promise<void>;
+  read(locator: string): Promise<ArtifactContentRead | null>;
+  delete(locators: string[]): Promise<void>;
 }
 
 export interface BlobClient {
@@ -62,17 +62,29 @@ export class InMemoryArtifactContentStore implements ArtifactContentStore {
     return { blobPath, url };
   }
 
-  async read(blobPath: string): Promise<ArtifactContentRead | null> {
-    const entry = this.entries.get(blobPath);
+  async read(locator: string): Promise<ArtifactContentRead | null> {
+    const entry = this.entries.get(locator) ?? this.entryByUrl(locator);
     return entry
       ? { body: Buffer.from(entry.body), contentType: entry.contentType }
       : null;
   }
 
-  async delete(blobPaths: string[]): Promise<void> {
-    for (const blobPath of blobPaths) {
-      this.entries.delete(blobPath);
+  async delete(locators: string[]): Promise<void> {
+    for (const locator of locators) {
+      this.entries.delete(locator);
+      const entry = this.entryByUrl(locator);
+      if (entry) {
+        for (const [blobPath, candidate] of this.entries.entries()) {
+          if (candidate.url === locator) this.entries.delete(blobPath);
+        }
+      }
     }
+  }
+
+  private entryByUrl(
+    locator: string,
+  ): (ArtifactContentRead & { url: string }) | undefined {
+    return [...this.entries.values()].find((entry) => entry.url === locator);
   }
 }
 
@@ -96,13 +108,14 @@ export class VercelBlobArtifactContentStore implements ArtifactContentStore {
     return { blobPath, url: result.url };
   }
 
-  async read(blobPath: string): Promise<ArtifactContentRead | null> {
-    const url = this.pathToUrl.get(blobPath) ?? blobPath;
+  async read(locator: string): Promise<ArtifactContentRead | null> {
+    const url = this.resolveUrl(locator);
+    if (!url) return null;
     const response = await this.blob.fetch(url);
     if (response.status === 404) return null;
     if (!response.ok)
       throw new Error(
-        `Unable to read Artifact content ${blobPath}: ${response.status}`,
+        `Unable to read Artifact content ${locator}: ${response.status}`,
       );
     return {
       body: Buffer.from(await response.arrayBuffer()),
@@ -110,11 +123,24 @@ export class VercelBlobArtifactContentStore implements ArtifactContentStore {
     };
   }
 
-  async delete(blobPaths: string[]): Promise<void> {
-    if (blobPaths.length === 0) return;
-    await this.blob.del(blobPaths);
-    for (const blobPath of blobPaths) {
-      this.pathToUrl.delete(blobPath);
+  async delete(locators: string[]): Promise<void> {
+    if (locators.length === 0) return;
+    const resolvedLocators = locators.map(
+      (locator) => this.pathToUrl.get(locator) ?? locator,
+    );
+    await this.blob.del(resolvedLocators);
+    for (const locator of locators) {
+      this.pathToUrl.delete(locator);
+    }
+  }
+
+  private resolveUrl(locator: string): string | null {
+    const mappedUrl = this.pathToUrl.get(locator);
+    if (mappedUrl) return mappedUrl;
+    try {
+      return new URL(locator).toString();
+    } catch {
+      return null;
     }
   }
 }

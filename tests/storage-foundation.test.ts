@@ -135,7 +135,7 @@ describe("Artifact content storage", () => {
 
     await store.delete([written.blobPath]);
     expect(blob.deleted).toEqual([
-      "artifacts/Ab3xY9kQ/manifest-1/assets/app.js",
+      "blob://artifacts/Ab3xY9kQ/manifest-1/assets/app.js",
     ]);
   });
 });
