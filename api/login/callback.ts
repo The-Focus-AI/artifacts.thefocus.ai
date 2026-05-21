@@ -49,15 +49,21 @@ export async function handleLoginCallback(
 		const jwt =
 			url.searchParams.get("__clerk_db_jwt") ??
 			url.searchParams.get("__session");
-		console.error("callback: jwt=" + (jwt ? jwt.substring(0, 20) + "..." : "none"));
-		console.error("callback: url=" + fullUrl.replace(/__clerk_db_jwt=[^&]*/, "__clerk_db_jwt=..."));
+		console.error(
+			"callback: jwt=" + (jwt ? jwt.substring(0, 20) + "..." : "none"),
+		);
+		console.error(
+			"callback: url=" +
+				fullUrl.replace(/__clerk_db_jwt=[^&]*/, "__clerk_db_jwt=..."),
+		);
 		verification = await deps.clerk.verifyRequest(fullUrl);
 		console.error("callback: verification=" + JSON.stringify(verification));
 	} catch (err) {
 		console.error("callback: verifyRequest threw", String(err));
 		showError(
 			nodeResponse,
-			"Authentication failed: " + (err instanceof Error ? err.message : String(err)),
+			"Authentication failed: " +
+				(err instanceof Error ? err.message : String(err)),
 		);
 		return;
 	}
