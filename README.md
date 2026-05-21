@@ -24,7 +24,6 @@ See [docs/deploy.md](docs/deploy.md) for Vercel project, custom domain, pull-req
 The publishing path accepts one local HTML file or one local directory and returns a canonical unlisted Publication URL:
 
 ```bash
-ARTIFACTS_PUBLIC_BASE_URL=https://your-vercel-host.example \
 THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
 fnox exec -- pnpm artifacts publish ./artifact.html
 ```
@@ -43,7 +42,6 @@ Removal marks the Publication as removed, clears matching Local Source state whe
 Directory Artifacts require a root `index.html` by default and preserve nested Artifact Paths:
 
 ```bash
-ARTIFACTS_PUBLIC_BASE_URL=https://your-vercel-host.example \
 THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
 fnox exec -- pnpm artifacts publish ./dist
 ```
@@ -52,4 +50,4 @@ Use `--entry-page path/to/page.html` to choose a different HTML Entry Page insid
 
 Packaging applies built-in safety rules before upload: obvious secret, dependency, cache, and hidden paths are excluded by default, except `.well-known/`; `.gitignore` is not read in v1; symlinks are rejected; and preflight fails before upload if any file exceeds 25 MB, total Artifact size exceeds 100 MB, or the Artifact has more than 1,000 files. Exclusion output is concise by default; add `--verbose` to print excluded paths.
 
-`ARTIFACTS_PUBLIC_BASE_URL` must be the actual Vercel production or preview host that serves this app. Published Artifacts are served by the Vercel rewrite from `/a/{opaque}` and nested `/a/{opaque}/{path}` URLs to the API functions with `Cache-Control: no-store` and `X-Robots-Tag: noindex, nofollow` headers.
+`ARTIFACTS_PUBLIC_BASE_URL` defaults to `https://artifacts.thefocus.ai`; set it only when publishing against a Vercel Preview or another host that serves this app. Published Artifacts are served by the Vercel rewrite from `/a/{opaque}` and nested `/a/{opaque}/{path}` URLs to the API functions with `Cache-Control: no-store` and `X-Robots-Tag: noindex, nofollow` headers.

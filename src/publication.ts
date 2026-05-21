@@ -29,6 +29,7 @@ import {
 } from "./storage/publication-metadata.js";
 
 export const singleFileEntryArtifactPath = "index.html";
+export const defaultPublicBaseUrl = "https://artifacts.thefocus.ai";
 const directoryManifestContentType =
   "application/vnd.thefocus.artifact-manifest+json; version=1";
 const directoryManifestArtifactPath = "manifest.json";
@@ -498,7 +499,9 @@ export async function publishArtifactFromEnvironment(
   return publishArtifact({
     sourcePath,
     publicBaseUrl:
-      options.publicBaseUrl ?? requiredEnv("ARTIFACTS_PUBLIC_BASE_URL"),
+      options.publicBaseUrl ??
+      env.ARTIFACTS_PUBLIC_BASE_URL ??
+      defaultPublicBaseUrl,
     publisherEmail,
     metadataStore: createNeonPublicationMetadataStore(),
     contentStore: new VercelBlobArtifactContentStore(),
@@ -511,13 +514,16 @@ export async function publishArtifactFromEnvironment(
 
 export async function publishSingleFileArtifactFromEnvironment(
   filePath: string,
-  options: { publicBaseUrl?: string } = {},
+  options: { publicBaseUrl?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<PublishSingleFileArtifactResult> {
-  const token = await resolvePublisherToken();
+  const env = options.env ?? process.env;
+  const token = await resolvePublisherToken({ env });
   return publishSingleFileArtifactWithPublisherToken({
     filePath,
     publicBaseUrl:
-      options.publicBaseUrl ?? requiredEnv("ARTIFACTS_PUBLIC_BASE_URL"),
+      options.publicBaseUrl ??
+      env.ARTIFACTS_PUBLIC_BASE_URL ??
+      defaultPublicBaseUrl,
     publisherToken: token.token ?? requiredEnv("THEFOCUS_ARTIFACTS_TOKEN"),
     metadataStore: createNeonPublicationMetadataStore(),
     contentStore: new VercelBlobArtifactContentStore(),
