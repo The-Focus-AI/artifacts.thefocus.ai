@@ -41,4 +41,6 @@ fnox exec -- pnpm artifacts publish ./dist
 
 Use `--entry-page path/to/page.html` to choose a different HTML Entry Page inside a directory Artifact.
 
+Packaging applies built-in safety rules before upload: obvious secret, dependency, cache, and hidden paths are excluded by default, except `.well-known/`; `.gitignore` is not read in v1; symlinks are rejected; and preflight fails before upload if any file exceeds 25 MB, total Artifact size exceeds 100 MB, or the Artifact has more than 1,000 files. Exclusion output is concise by default; add `--verbose` to print excluded paths.
+
 `ARTIFACTS_PUBLIC_BASE_URL` must be the actual Vercel production or preview host that serves this app. Published Artifacts are served by the Vercel rewrite from `/a/{opaque}` and nested `/a/{opaque}/{path}` URLs to the API functions with `Cache-Control: no-store` and `X-Robots-Tag: noindex, nofollow` headers.
