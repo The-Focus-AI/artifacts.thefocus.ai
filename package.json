@@ -1,0 +1,27 @@
+{
+  "name": "artifacts.thefocus.ai",
+  "version": "1.0.0",
+  "description": "CLI-first Artifact publishing service for TheFocus.AI",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "prettier --check package.json tsconfig.json vitest.config.ts 'src/**/*.ts' 'tests/**/*.ts' README.md 'docs/**/*.md' && tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.33.0",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@vercel/blob": "^2.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  }
+}
