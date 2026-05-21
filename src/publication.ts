@@ -33,6 +33,9 @@ const directoryManifestContentType =
   "application/vnd.thefocus.artifact-manifest+json; version=1";
 const directoryManifestArtifactPath = "manifest.json";
 const directoryManifestKind = "directory-artifact-manifest.v1";
+const maxSingleFileBytes = 25 * 1024 * 1024;
+const maxTotalArtifactBytes = 100 * 1024 * 1024;
+const maxArtifactFileCount = 1_000;
 
 export interface PublishSingleFileArtifactInput {
   filePath: string;
@@ -57,6 +60,11 @@ export async function publishSingleFileArtifact(
   input: PublishSingleFileArtifactInput,
 ): Promise<PublishSingleFileArtifactResult> {
   const absoluteFilePath = resolve(input.filePath);
+  const fileStats = await stat(absoluteFilePath);
+  assertFileWithinSingleFileLimit(
+    fileStats.size,
+    toArtifactPath(basename(absoluteFilePath)),
+  );
   const html = await readFile(absoluteFilePath);
   const opaqueId = input.opaqueId ?? createOpaqueId();
   const manifestRef = input.manifestRef ?? createManifestRef(html);
@@ -109,6 +117,7 @@ export interface PublishDirectoryArtifactResult {
   manifestLocator: string;
   entryArtifactPath: string;
   artifactPaths: string[];
+  excludedArtifactPaths: string[];
 }
 
 export type PublishArtifactDecision =
@@ -168,11 +177,13 @@ export async function publishDirectoryArtifact(
   }
 
   const entryArtifactPath = normalizeEntryPage(input.entryPage ?? "index.html");
-  const artifactFiles = await collectDirectoryArtifactFiles(
-    absoluteDirectoryPath,
-  );
+  const {
+    files: artifactFiles,
+    excludedArtifactPaths: dirExcludedArtifactPaths,
+  } = await collectDirectoryArtifactFiles(absoluteDirectoryPath);
   const entryFile = artifactFiles.find(
-    (file) => file.artifactPath === entryArtifactPath,
+    (file: { absolutePath: string; artifactPath: string; size: number }) =>
+      file.artifactPath === entryArtifactPath,
   );
   if (!entryFile) {
     if (!input.entryPage) {
@@ -241,6 +252,7 @@ export async function publishDirectoryArtifact(
     manifestLocator: manifestWritten.url,
     entryArtifactPath,
     artifactPaths: Object.keys(manifest.files),
+    excludedArtifactPaths: dirExcludedArtifactPaths,
   };
 }
 
@@ -500,19 +512,51 @@ export function singleFilePublishSummary(
   result: Pick<
     PublishSingleFileArtifactResult,
     "publicationUrlPath" | "publicationUrl"
-  > & { revisionWindowExpiresAt?: Date; decision?: PublishArtifactDecision },
+  > & {
+    revisionWindowExpiresAt?: Date;
+    decision?: PublishArtifactDecision;
+    excludedArtifactPaths?: string[];
+  },
+  options: { verbose?: boolean } = {},
 ): string {
+  return publishArtifactSummary(result, options);
+}
+
+export function publishArtifactSummary(
+  result: Pick<
+    PublishSingleFileArtifactResult,
+    "publicationUrlPath" | "publicationUrl"
+  > & {
+    revisionWindowExpiresAt?: Date;
+    decision?: PublishArtifactDecision;
+    excludedArtifactPaths?: string[];
+  },
+  options: { verbose?: boolean } = {},
+): string {
+  const action = result.decision?.includes("update") ? "Updated" : "Published";
   const suffix = result.revisionWindowExpiresAt
     ? ` (Revision Window until ${result.revisionWindowExpiresAt.toISOString()})`
     : "";
-  const action = result.decision?.includes("update") ? "Updated" : "Published";
-  return `${action} ${basename(result.publicationUrlPath)} to ${result.publicationUrl}${suffix}`;
+  const lines = [
+    `${action} ${basename(result.publicationUrlPath)} to ${result.publicationUrl}${suffix}`,
+  ];
+  const excluded = result.excludedArtifactPaths ?? [];
+  if (excluded.length > 0) {
+    lines.push(
+      `Warning: ${excluded.length} files or directories were excluded by packaging safety rules. Re-run with --verbose to see details.`,
+    );
+    if (options.verbose) {
+      lines.push("Excluded paths:", ...excluded.map((path) => `- ${path}`));
+    }
+  }
+  return lines.join("\n");
 }
 
 interface PackagedArtifact {
   manifestRef: string;
   activeArtifactLocator: string;
   artifactPaths: string[];
+  excludedArtifactPaths: string[];
 }
 
 async function packageArtifactSource(
@@ -530,6 +574,7 @@ async function packageArtifactSource(
     manifestRef: "pending",
     activeArtifactLocator: "pending",
     artifactPaths: [],
+    excludedArtifactPaths: [],
     async writeForPublication(publicationId: string) {
       const sourceStats = await stat(localSourcePath);
       if (sourceStats.isDirectory()) {
@@ -665,6 +710,7 @@ async function writeSingleFileArtifactContent(input: {
     manifestRef,
     activeArtifactLocator: written.url,
     artifactPaths: [singleFileEntryArtifactPath],
+    excludedArtifactPaths: [],
   };
 }
 
@@ -676,11 +722,13 @@ async function writeDirectoryArtifactContent(input: {
   manifestRefFactory?: (body: Buffer) => string;
 }): Promise<PackagedArtifact> {
   const entryArtifactPath = normalizeEntryPage(input.entryPage ?? "index.html");
-  const artifactFiles = await collectDirectoryArtifactFiles(
-    input.directoryPath,
-  );
+  const {
+    files: artifactFiles,
+    excludedArtifactPaths: dirExcluded,
+  } = await collectDirectoryArtifactFiles(input.directoryPath);
   const entryFile = artifactFiles.find(
-    (file) => file.artifactPath === entryArtifactPath,
+    (file: { absolutePath: string; artifactPath: string; size: number }) =>
+      file.artifactPath === entryArtifactPath,
   );
   if (!entryFile) {
     if (!input.entryPage) {
@@ -726,8 +774,84 @@ async function writeDirectoryArtifactContent(input: {
     manifestRef,
     activeArtifactLocator: manifestWritten.url,
     artifactPaths: Object.keys(manifest.files),
+    excludedArtifactPaths: dirExcluded,
   };
 }
+
+function shouldExcludeArtifactPath(
+  artifactPath: string,
+  isDirectory: boolean,
+): boolean {
+  const parts = artifactPath.split("/").filter(Boolean);
+  const name = parts.at(-1) ?? artifactPath;
+  if (parts[0] === ".well-known") return false;
+  if (parts.some((part) => part.startsWith("."))) return true;
+  if (excludedDirectoryNames.has(name)) return true;
+  if (!isDirectory && excludedFileNames.has(name)) return true;
+  if (
+    !isDirectory &&
+    excludedFileExtensions.has(extname(name).toLowerCase())
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function assertFileWithinSingleFileLimit(
+  size: number,
+  artifactPath: string,
+): void {
+  if (size > maxSingleFileBytes) {
+    throw new Error(
+      `Artifact file ${artifactPath} exceeds the 25 MB single-file limit.`,
+    );
+  }
+}
+
+function assertDirectoryArtifactWithinPreflightLimits(
+  files: Array<{ absolutePath: string; artifactPath: string; size: number }>,
+): void {
+  if (files.length > maxArtifactFileCount) {
+    throw new Error(
+      `Directory Artifact has ${files.length} files and exceeds the 1,000 file limit.`,
+    );
+  }
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+  if (totalSize > maxTotalArtifactBytes) {
+    throw new Error(
+      `Directory Artifact total size exceeds the 100 MB total Artifact limit.`,
+    );
+  }
+}
+
+const excludedDirectoryNames = new Set([
+  "node_modules",
+  "bower_components",
+  "vendor",
+  ".git",
+  ".hg",
+  ".svn",
+  ".next",
+  ".nuxt",
+  ".cache",
+  "cache",
+  ".turbo",
+  "coverage",
+  "dist-cache",
+  "__pycache__",
+]);
+
+const excludedFileNames = new Set([
+  ".env",
+  ".env.local",
+  ".env.production",
+  ".npmrc",
+  ".yarnrc",
+  "id_rsa",
+  "id_ed25519",
+]);
+
+const excludedFileExtensions = new Set([".pem", ".key", ".p12", ".pfx"]);
 
 async function activePublicationLocators(
   activeArtifactLocator: string,
@@ -752,27 +876,58 @@ function addMinutes(date: Date, minutes: number): Date {
 
 async function collectDirectoryArtifactFiles(
   directoryPath: string,
-): Promise<Array<{ absolutePath: string; artifactPath: string }>> {
-  const files: Array<{ absolutePath: string; artifactPath: string }> = [];
+): Promise<{
+  files: Array<{ absolutePath: string; artifactPath: string; size: number }>;
+  excludedArtifactPaths: string[];
+}> {
+  const files: Array<{
+    absolutePath: string;
+    artifactPath: string;
+    size: number;
+  }> = [];
+  const excludedArtifactPaths: string[] = [];
 
   async function visit(currentDirectory: string): Promise<void> {
     const entries = await readdir(currentDirectory, { withFileTypes: true });
     for (const entry of entries) {
       const absolutePath = resolve(currentDirectory, entry.name);
+      const artifactPath = toArtifactPath(
+        relative(directoryPath, absolutePath),
+      );
+      if (entry.isSymbolicLink()) {
+        throw new Error(
+          `Symlinks are not supported in directory Artifacts: ${artifactPath}`,
+        );
+      }
+      if (shouldExcludeArtifactPath(artifactPath, entry.isDirectory())) {
+        excludedArtifactPaths.push(
+          entry.isDirectory() ? `${artifactPath}/` : artifactPath,
+        );
+        continue;
+      }
       if (entry.isDirectory()) {
         await visit(absolutePath);
         continue;
       }
       if (!entry.isFile()) continue;
+      const fileStats = await stat(absolutePath);
+      assertFileWithinSingleFileLimit(fileStats.size, artifactPath);
       files.push({
         absolutePath,
-        artifactPath: toArtifactPath(relative(directoryPath, absolutePath)),
+        artifactPath,
+        size: fileStats.size,
       });
     }
   }
 
   await visit(directoryPath);
-  return files.sort((a, b) => a.artifactPath.localeCompare(b.artifactPath));
+  assertDirectoryArtifactWithinPreflightLimits(files);
+  return {
+    files: files.sort((a, b) => a.artifactPath.localeCompare(b.artifactPath)),
+    excludedArtifactPaths: excludedArtifactPaths.sort((a, b) =>
+      a.localeCompare(b),
+    ),
+  };
 }
 
 function normalizeEntryPage(entryPage: string): string {
