@@ -25,7 +25,8 @@ export default async function handler(
 		Location: signInUrl.toString(),
 	};
 	if (port) {
-		headers["Set-Cookie"] = `artifacts_login_port=${port}; Path=/; Max-Age=300; SameSite=Lax`;
+		headers["Set-Cookie"] =
+			`artifacts_login_port=${port}; Path=/; Max-Age=300; SameSite=Lax`;
 	}
 
 	response.writeHead(302, headers);
