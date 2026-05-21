@@ -5,11 +5,9 @@ export default function handler(
   response: ServerResponse,
 ): void {
   const clerkDomain =
-    process.env["CLERK_SIGN_IN_DOMAIN"] ??
-    "possible-shrew-37.accounts.dev";
+    process.env["CLERK_SIGN_IN_DOMAIN"] ?? "possible-shrew-37.accounts.dev";
   const clerkCdn = clerkDomain.replace(".accounts.dev", ".clerk.accounts.dev");
-  const publishableKey =
-    process.env["NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"] ?? "";
+  const publishableKey = process.env["NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"] ?? "";
 
   const html = `<!doctype html>
 <html lang="en">
