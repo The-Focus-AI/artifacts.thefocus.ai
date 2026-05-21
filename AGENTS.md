@@ -50,6 +50,12 @@ The `artifacts login --token <token>` escape hatch bypasses the browser flow ent
 
 Clerk secrets (`CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SIGN_IN_DOMAIN`) are declared in `fnox.toml` and stored in 1Password vault "Artifacts". The Clerk redirect URL must include `https://artifacts.thefocus.ai/login` in the Clerk dashboard.
 
+## Deploy rules
+
+- **Always use `git push` to trigger deploys.** Vercel auto-deploys from the `main` branch via GitHub integration.
+- **Only use `vercel deploy` directly when updating environment variables** (e.g., after adding secrets to 1Password and Vercel).
+- Never run `vercel deploy` for code changes — push to GitHub instead.
+
 ## Planning and issue workflow
 
 This project uses the Matt Pocock planning skills installed in `skills-lock.json`:
