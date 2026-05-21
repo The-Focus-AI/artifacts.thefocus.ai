@@ -154,6 +154,23 @@ export interface PublishArtifactResult {
   artifactPaths: string[];
 }
 
+export interface RemovePublicationInput {
+  publicationUrl: string;
+  publisherToken: string;
+  metadataStore: PublicationMetadataStore;
+  contentStore: ArtifactContentStore;
+  tokenStore: PublisherTokenStore;
+  stateStore: PublicationStateStore;
+}
+
+export interface RemovePublicationResult {
+  opaqueId: string;
+  publicationUrl: string;
+  status: "removed" | "not-found";
+  deletedLocators: string[];
+  clearedLocalSourcePath: string | null;
+}
+
 interface DirectoryArtifactManifest {
   kind: typeof directoryManifestKind;
   entryArtifactPath: string;
@@ -506,6 +523,73 @@ export async function publishSingleFileArtifactFromEnvironment(
     contentStore: new VercelBlobArtifactContentStore(),
     tokenStore: createNeonPublisherTokenStore(),
   });
+}
+
+export async function removePublication(
+  input: RemovePublicationInput,
+): Promise<RemovePublicationResult> {
+  await authenticatePublisherToken({
+    token: input.publisherToken,
+    store: input.tokenStore,
+  });
+  const opaqueId = opaqueIdFromPublicationUrl(input.publicationUrl);
+  if (!opaqueId) throw new Error("remove requires a Publication URL.");
+
+  const publication = await input.metadataStore.getByOpaqueId(opaqueId);
+  if (!publication || publication.status !== "active") {
+    return {
+      opaqueId,
+      publicationUrl: input.publicationUrl,
+      status: "not-found",
+      deletedLocators: [],
+      clearedLocalSourcePath: null,
+    };
+  }
+
+  const locators = await activePublicationLocators(
+    publication.activeArtifactLocator,
+    input.contentStore,
+  );
+  await input.metadataStore.markRemoved(opaqueId);
+  await input.contentStore.delete(locators);
+  if (publication.localSourcePath) {
+    await input.stateStore.clear(publication.localSourcePath);
+  }
+
+  return {
+    opaqueId,
+    publicationUrl: input.publicationUrl,
+    status: "removed",
+    deletedLocators: locators,
+    clearedLocalSourcePath: publication.localSourcePath,
+  };
+}
+
+export async function removePublicationFromEnvironment(
+  publicationUrl: string,
+  options: { env?: NodeJS.ProcessEnv; configDir?: string } = {},
+): Promise<RemovePublicationResult> {
+  const token = await resolvePublisherToken({
+    env: options.env,
+    configDir: options.configDir,
+  });
+  if (!token.token) throw new Error("A valid Publisher Token is required");
+  return removePublication({
+    publicationUrl,
+    publisherToken: token.token,
+    metadataStore: createNeonPublicationMetadataStore(),
+    contentStore: new VercelBlobArtifactContentStore(),
+    tokenStore: createNeonPublisherTokenStore(),
+    stateStore: new FilePublicationStateStore(options.configDir),
+  });
+}
+
+export function removePublicationSummary(
+  result: Pick<RemovePublicationResult, "publicationUrl" | "status">,
+): string {
+  return result.status === "removed"
+    ? `Removed ${result.publicationUrl}`
+    : `Publication not found or already removed: ${result.publicationUrl}`;
 }
 
 export function singleFilePublishSummary(

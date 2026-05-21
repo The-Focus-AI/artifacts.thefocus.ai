@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -18,6 +19,9 @@ import { loginWithBrowserFlow } from "./login-flow.js";
 import {
   publishArtifactFromEnvironment,
   publishArtifactSummary,
+  removePublicationFromEnvironment,
+  removePublicationSummary,
+  type RemovePublicationResult,
 } from "./publication.js";
 
 export interface CliDependencies {
@@ -27,6 +31,11 @@ export interface CliDependencies {
   tokenStore?: PublisherTokenStore;
   configDir?: string;
   openBrowser?: (url: string) => Promise<void>;
+  stdin?: NodeJS.ReadStream;
+  removePublication?: (
+    publicationUrl: string,
+  ) => Promise<RemovePublicationResult>;
+  confirmRemoval?: (publicationUrl: string) => Promise<boolean>;
   loginFlow?: (deps: {
     baseUrl: string;
     openBrowser?: (url: string) => Promise<void>;
@@ -57,6 +66,34 @@ export async function runCli(
       stdout.write(
         `${publishArtifactSummary(result, { verbose: options.verbose === "true" })}\n`,
       );
+      return 0;
+    }
+
+    if (command === "remove" && firstArg) {
+      if (!Object.hasOwn(options, "yes")) {
+        const confirm =
+          dependencies.confirmRemoval ??
+          ((publicationUrl: string) =>
+            confirmRemoval(
+              publicationUrl,
+              dependencies.stdin ?? process.stdin,
+              stdout,
+            ));
+        const confirmed = await confirm(firstArg);
+        if (!confirmed) {
+          stdout.write("Removal cancelled.\n");
+          return 1;
+        }
+      }
+      const remove =
+        dependencies.removePublication ??
+        ((publicationUrl: string) =>
+          removePublicationFromEnvironment(publicationUrl, {
+            env,
+            configDir,
+          }));
+      const result = await remove(firstArg);
+      stdout.write(`${removePublicationSummary(result)}\n`);
       return 0;
     }
 
@@ -135,11 +172,35 @@ function parseFlags(flags: string[]): Record<string, string | undefined> {
   return parsed;
 }
 
+async function confirmRemoval(
+  publicationUrl: string,
+  stdin: NodeJS.ReadStream,
+  stdout: Pick<NodeJS.WriteStream, "write">,
+): Promise<boolean> {
+  if (!stdin.isTTY) {
+    throw new Error("Removal requires --yes in non-interactive terminals.");
+  }
+  const readline = createInterface({
+    input: stdin,
+    output: stdout as NodeJS.WriteStream,
+  });
+  try {
+    const answer = await readline.question(
+      `Remove ${publicationUrl}? Removal cannot be undone. Type yes to continue: `,
+    );
+    return answer.trim().toLowerCase() === "yes";
+  } finally {
+    readline.close();
+    stdout.write("");
+  }
+}
+
 function printUsage(stderr: Pick<NodeJS.WriteStream, "write">): void {
   stderr.write(
-    "Usage: artifacts <login|logout|whoami|publish>\n" +
+    "Usage: artifacts <login|logout|whoami|publish|remove>\n" +
       "  artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
       "  artifacts publish <file.html|directory> [--entry-page index.html] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose]\n" +
+      "  artifacts remove <Publication URL> [--yes]\n" +
       "  artifacts whoami\n" +
       "  artifacts logout\n",
   );

@@ -31,6 +31,15 @@ fnox exec -- pnpm artifacts publish ./artifact.html
 
 Publisher Tokens are issued only to verified emails ending exactly in `@thefocus.ai`, are stored hashed server-side, and can be stored locally with `artifacts login --token <token>` or supplied non-interactively with `THEFOCUS_ARTIFACTS_TOKEN` (which overrides local config). Local CLI token state is stored under `~/.config/thefocus-artifacts/` with restricted file permissions where supported; `artifacts whoami` validates the active token and `artifacts logout` removes local token state.
 
+Remove a Publication with an interactive confirmation, or pass `--yes` for non-interactive scripted Removal:
+
+```bash
+THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
+fnox exec -- pnpm artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ --yes
+```
+
+Removal marks the Publication as removed, clears matching Local Source state when present, deletes the active Artifact contents from Blob storage, and makes the Publication URL return 404.
+
 Directory Artifacts require a root `index.html` by default and preserve nested Artifact Paths:
 
 ```bash
