@@ -9,6 +9,8 @@
     "lint": "prettier --check package.json tsconfig.json vitest.config.ts 'src/**/*.ts' 'tests/**/*.ts' README.md 'docs/**/*.md' && tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:storage:live": "node -e \"for (const name of ['DATABASE_URL','BLOB_READ_WRITE_TOKEN']) if (!process.env[name]) { console.error(name + ' is required for live storage tests'); process.exit(1) }\" && vitest run tests/storage-live.test.ts --reporter verbose",
+    "test:storage:live:db": "node -e \"if (!process.env.DATABASE_URL) { console.error('DATABASE_URL is required for live database storage tests'); process.exit(1) }\" && vitest run tests/storage-live.test.ts --reporter verbose -t 'live Neon/Postgres'",
+    "test:storage:live:blob": "node -e \"if (!process.env.BLOB_READ_WRITE_TOKEN) { console.error('BLOB_READ_WRITE_TOKEN is required for live Blob storage tests'); process.exit(1) }\" && vitest run tests/storage-live.test.ts --reporter verbose -t 'live Vercel Blob'",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "keywords": [],

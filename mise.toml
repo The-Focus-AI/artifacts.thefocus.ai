@@ -13,18 +13,19 @@ fd = "latest"
 _.file = ".fnox/env"
 
 [tasks.setup]
-description = "First-time local setup"
+description = "First-time onboarding: pulls the fnox 1Password service account token into .fnox/env"
 run = '''
 set -euo pipefail
 mkdir -p .fnox
 chmod 700 .fnox
-if [ ! -f .fnox/env ]; then
-  touch .fnox/env
-  chmod 600 .fnox/env
-  echo "Created .fnox/env. Add OP_SERVICE_ACCOUNT_TOKEN or other local bootstrap values if needed."
-else
-  echo ".fnox/env already exists"
+if [ -f .fnox/env ] && grep -q '^OP_SERVICE_ACCOUNT_TOKEN=' .fnox/env; then
+  echo "✓ .fnox/env already has OP_SERVICE_ACCOUNT_TOKEN — skipping"
+  exit 0
 fi
+TOKEN="$(op read 'op://thefocus/artifacts.thefocus.ai service account token/credential')"
+printf 'OP_SERVICE_ACCOUNT_TOKEN=%s\n' "$TOKEN" > .fnox/env
+chmod 600 .fnox/env
+echo "✓ .fnox/env written. Open a new shell tab or run 'mise exec -- fnox check'."
 '''
 
 [tasks.install]

@@ -7,7 +7,7 @@ The production-shaped storage foundation expects these environment variables whe
 - `DATABASE_URL` — Neon/Postgres connection string used by the Publication metadata store.
 - `BLOB_READ_WRITE_TOKEN` — Vercel Blob read/write token used by the Artifact content store.
 
-Do not commit secret values. Put local bootstrap values in `.fnox/env` or the runtime environment.
+Do not commit secret values. Runtime secrets live in the dedicated 1Password vault `Artifacts` and are resolved by fnox. The only value that belongs in local `.fnox/env` is the bootstrap `OP_SERVICE_ACCOUNT_TOKEN`, pulled from the `thefocus` vault by `mise run setup`.
 
 ## Metadata schema
 
@@ -30,13 +30,27 @@ Automated tests use in-memory/fake adapters, so they do not require Neon or Verc
 
 ## Live storage verification
 
-When `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` are available, run:
+Create or update those 1Password items with the 1Password CLI:
 
 ```bash
-pnpm run test:storage:live
+op item create --vault "Artifacts" --category=password --title=DATABASE_URL "password=<neon-postgres-url>"
+op item create --vault "Artifacts" --category=password --title=BLOB_READ_WRITE_TOKEN "password=<vercel-blob-token>"
 ```
 
-This applies `migrations/0001_publications.sql`, creates/reads/updates/lists/marks removed a temporary Publication row in Neon/Postgres, writes/reads/deletes a temporary Artifact object in Vercel Blob, and then cleans up the test data.
+Then run live verification through fnox:
+
+```bash
+# First acceptance criterion: Neon/Postgres metadata only
+fnox exec -- pnpm run test:storage:live:db
+
+# Blob storage only
+fnox exec -- pnpm run test:storage:live:blob
+
+# Both live storage checks
+fnox exec -- pnpm run test:storage:live
+```
+
+The database check applies `migrations/0001_publications.sql`, creates/reads/updates/lists/marks removed a temporary Publication row in Neon/Postgres, and then cleans up the row. The Blob check writes/reads/deletes a temporary Artifact object in Vercel Blob.
 
 ## Verification commands
 

@@ -1,0 +1,19 @@
+# Source of truth: 1Password vault "Artifacts".
+# Each [secrets.X] block maps env var X to a 1Password item in that vault.
+# Convention: 1Password item title = env var name (= the `value` field below).
+
+[providers.op]
+type = "1password"
+vault = "Artifacts"
+
+[secrets.DATABASE_URL]
+provider = "op"
+value = "DATABASE_URL"
+if_missing = "ignore"
+description = "Neon Postgres connection string — https://console.neon.tech"
+
+[secrets.BLOB_READ_WRITE_TOKEN]
+provider = "op"
+value = "BLOB_READ_WRITE_TOKEN"
+if_missing = "ignore"
+description = "Vercel Blob read/write token — https://vercel.com/dashboard/stores"
