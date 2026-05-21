@@ -48,14 +48,34 @@ describe("Publication metadata storage", () => {
       "2026-05-20T12:30:00.000Z",
     );
 
-    const listed = await store.listByPublisherEmail("publisher@thefocus.ai");
-    expect(listed).toHaveLength(1);
-    expect(listed[0]?.opaqueId).toBe("Ab3xY9kQ");
+    const otherPublisher = await store.create({
+      ...basePublication,
+      opaqueId: "OtherPub",
+      publisherEmail: "other@thefocus.ai",
+    });
+    expect(otherPublisher.publisherEmail).toBe("other@thefocus.ai");
 
     const removed = await store.markRemoved("Ab3xY9kQ");
     expect(removed?.status).toBe("removed");
     expect(removed?.removedAt?.toISOString()).toBe("2026-05-20T12:00:00.000Z");
     expect((await store.getByOpaqueId("Ab3xY9kQ"))?.status).toBe("removed");
+
+    const active = await store.create({
+      ...basePublication,
+      opaqueId: "ActivePub",
+      activeManifestRef: "manifest-active",
+    });
+    expect(active.status).toBe("active");
+
+    const listed = await store.listByPublisherEmail("publisher@thefocus.ai");
+    expect(listed.map((publication) => publication.opaqueId)).toEqual([
+      "Ab3xY9kQ",
+      "ActivePub",
+    ]);
+    expect(listed.map((publication) => publication.status)).toEqual([
+      "removed",
+      "active",
+    ]);
   });
 
   it("maps create/read/update/remove operations to Postgres-compatible SQL", async () => {
@@ -68,6 +88,7 @@ describe("Publication metadata storage", () => {
     await store.getByOpaqueId("Ab3xY9kQ");
     await store.update("Ab3xY9kQ", { activeManifestRef: "manifest-2" });
     await store.markRemoved("Ab3xY9kQ");
+    const listed = await store.listByPublisherEmail("publisher@thefocus.ai");
 
     expect(sql.statements.map((statement) => statement.sql)).toEqual([
       expect.stringContaining("insert into publications"),
@@ -79,9 +100,13 @@ describe("Publication metadata storage", () => {
       ),
       expect.stringContaining("update publications"),
       expect.stringContaining("update publications"),
+      expect.stringContaining(
+        "select * from publications where publisher_email = $1 order by updated_at desc",
+      ),
     ]);
     expect(sql.rows.get("Ab3xY9kQ")?.active_manifest_ref).toBe("manifest-2");
     expect(sql.rows.get("Ab3xY9kQ")?.status).toBe("removed");
+    expect(listed[0]?.opaqueId).toBe("Ab3xY9kQ");
   });
 });
 
@@ -174,6 +199,19 @@ class RecordingSqlClient implements SqlClient {
     if (normalized.startsWith("select * from publications where opaque_id")) {
       const row = this.rows.get(String(params[0]));
       return { rows: row ? [row as T] : [] };
+    }
+
+    if (
+      normalized.startsWith("select * from publications where publisher_email")
+    ) {
+      const rows = [...this.rows.values()]
+        .filter((row) => row.publisher_email === params[0])
+        .sort(
+          (a, b) =>
+            new Date(String(b.updated_at)).getTime() -
+            new Date(String(a.updated_at)).getTime(),
+        );
+      return { rows: rows as T[] };
     }
 
     if (
