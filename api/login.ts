@@ -41,23 +41,15 @@ export default async function handler(
     }
   </style>
   <script
-    async
+    crossorigin="anonymous"
+    src="https://${clerkCdn}/npm/@clerk/ui@1/dist/ui.browser.js"
+  ></script>
+  <script
     crossorigin="anonymous"
     src="https://${clerkCdn}/npm/@clerk/clerk-js@6/dist/clerk.browser.js"
     data-clerk-publishable-key="${publishableKey}"
     data-clerk-sign-in-url="/login"
     data-clerk-after-sign-in-url="${callbackOrigin}${callbackPath}"
-  ></script>
-  <link
-    rel="preload"
-    href="https://${clerkCdn}/npm/@clerk/ui@1/dist/ui.browser.js"
-    as="script"
-    crossorigin="anonymous"
-  />
-  <script
-    async
-    crossorigin="anonymous"
-    src="https://${clerkCdn}/npm/@clerk/ui@1/dist/ui.browser.js"
   ></script>
 </head>
 <body>
