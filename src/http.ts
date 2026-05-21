@@ -41,19 +41,47 @@ export async function servePublicationNodeRequest(
 export function publicationRequestUrl(request: IncomingMessage): string {
   const host = request.headers.host ?? "localhost";
   const protocol = request.headers["x-forwarded-proto"] ?? "https";
-  const opaqueId = opaqueIdFromVercelRequest(request);
-  return `${protocol}://${host}/a/${opaqueId}`;
+  const artifactPath = artifactPathFromVercelRequest(request);
+  return `${protocol}://${host}/a/${artifactPath}`;
 }
 
-function opaqueIdFromVercelRequest(request: IncomingMessage): string {
+function artifactPathFromVercelRequest(request: IncomingMessage): string {
   const queryOpaque = (
-    request as IncomingMessage & { query?: { opaque?: unknown } }
+    request as IncomingMessage & {
+      query?: { opaque?: unknown; path?: unknown };
+    }
   ).query?.opaque;
-  if (typeof queryOpaque === "string") return queryOpaque;
+  const queryPath = (
+    request as IncomingMessage & {
+      query?: { opaque?: unknown; path?: unknown };
+    }
+  ).query?.path;
+  if (typeof queryOpaque === "string") {
+    return [queryOpaque, queryPathFromVercelCatchAll(queryPath)]
+      .filter(Boolean)
+      .join("/");
+  }
   if (Array.isArray(queryOpaque) && typeof queryOpaque[0] === "string") {
-    return queryOpaque[0];
+    return [queryOpaque[0], queryPathFromVercelCatchAll(queryPath)]
+      .filter(Boolean)
+      .join("/");
   }
 
   const pathname = new URL(request.url ?? "/", "https://localhost").pathname;
+  const apiPrefix = "/api/a/";
+  if (pathname.startsWith(apiPrefix)) return pathname.slice(apiPrefix.length);
+  const publicPrefix = "/a/";
+  if (pathname.startsWith(publicPrefix))
+    return pathname.slice(publicPrefix.length);
   return pathname.split("/").filter(Boolean).at(-1) ?? "";
+}
+
+function queryPathFromVercelCatchAll(path: unknown): string {
+  if (Array.isArray(path)) return path.filter(isString).join("/");
+  if (typeof path === "string") return path;
+  return "";
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
 }

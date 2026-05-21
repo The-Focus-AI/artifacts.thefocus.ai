@@ -14,7 +14,7 @@ import {
   writeLocalPublisherConfig,
 } from "./local-config.js";
 import {
-  publishSingleFileArtifactFromEnvironment,
+  publishArtifactFromEnvironment,
   singleFilePublishSummary,
 } from "./publication.js";
 
@@ -39,8 +39,11 @@ export async function runCli(
 
   try {
     if (command === "publish" && firstArg) {
-      const result = await publishSingleFileArtifactFromEnvironment(firstArg, {
+      const result = await publishArtifactFromEnvironment(firstArg, {
         publicBaseUrl: options["base-url"],
+        entryPage: options["entry-page"],
+        env,
+        configDir,
       });
       stdout.write(`${singleFilePublishSummary(result)}\n`);
       return 0;
@@ -102,7 +105,7 @@ function printUsage(stderr: Pick<NodeJS.WriteStream, "write">): void {
   stderr.write(
     "Usage: artifacts <login|logout|whoami|publish>\n" +
       "  artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
-      "  artifacts publish <file.html> [--base-url https://artifacts.thefocus.ai]\n" +
+      "  artifacts publish <file.html|directory> [--entry-page index.html] [--base-url https://artifacts.thefocus.ai]\n" +
       "  artifacts whoami\n" +
       "  artifacts logout\n",
   );
