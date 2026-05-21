@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/login",
+      "destination": "/api/login"
+    },
+    {
       "source": "/a/:opaque",
       "destination": "/api/a/:opaque"
     },

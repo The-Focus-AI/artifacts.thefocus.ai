@@ -722,10 +722,8 @@ async function writeDirectoryArtifactContent(input: {
   manifestRefFactory?: (body: Buffer) => string;
 }): Promise<PackagedArtifact> {
   const entryArtifactPath = normalizeEntryPage(input.entryPage ?? "index.html");
-  const {
-    files: artifactFiles,
-    excludedArtifactPaths: dirExcluded,
-  } = await collectDirectoryArtifactFiles(input.directoryPath);
+  const { files: artifactFiles, excludedArtifactPaths: dirExcluded } =
+    await collectDirectoryArtifactFiles(input.directoryPath);
   const entryFile = artifactFiles.find(
     (file: { absolutePath: string; artifactPath: string; size: number }) =>
       file.artifactPath === entryArtifactPath,
@@ -788,10 +786,7 @@ function shouldExcludeArtifactPath(
   if (parts.some((part) => part.startsWith("."))) return true;
   if (excludedDirectoryNames.has(name)) return true;
   if (!isDirectory && excludedFileNames.has(name)) return true;
-  if (
-    !isDirectory &&
-    excludedFileExtensions.has(extname(name).toLowerCase())
-  ) {
+  if (!isDirectory && excludedFileExtensions.has(extname(name).toLowerCase())) {
     return true;
   }
   return false;
@@ -874,9 +869,7 @@ function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
-async function collectDirectoryArtifactFiles(
-  directoryPath: string,
-): Promise<{
+async function collectDirectoryArtifactFiles(directoryPath: string): Promise<{
   files: Array<{ absolutePath: string; artifactPath: string; size: number }>;
   excludedArtifactPaths: string[];
 }> {
