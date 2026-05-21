@@ -7,6 +7,7 @@ ripgrep = "latest"
 fd = "latest"
 "npm:@earendil-works/pi-coding-agent" = "latest"
 "npm:markdownlint-cli2" = "latest"
+"npm:@ai-hero/sandcastle" = "latest"
 
 [env]
 _.file = ".fnox/env"
