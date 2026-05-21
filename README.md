@@ -17,6 +17,8 @@ mise run test
 
 See [docs/development.md](docs/development.md) for the Neon/Postgres and Vercel Blob environment contract, migration setup, and local fake adapter notes.
 
+See [docs/deploy.md](docs/deploy.md) for Vercel project, custom domain, pull-request Preview deployment, and live smoke-test instructions.
+
 ## Single-file publishing
 
 The first tracer-bullet publishing path accepts one local HTML file and returns a canonical unlisted Publication URL:
