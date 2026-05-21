@@ -18,7 +18,7 @@ class FakeClerkVerifier {
 		return "https://clerk.example.com/sign-in";
 	}
 
-	async verifyRequest(_url: string, _headers: Record<string, string>) {
+	async verifyRequest(_url: string) {
 		return { email: this.email, userId: "test_user_id" };
 	}
 }

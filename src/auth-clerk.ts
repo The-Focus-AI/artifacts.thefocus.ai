@@ -7,10 +7,7 @@ export interface ClerkVerification {
 
 export interface ClerkVerifier {
   buildSignInUrl(currentUrl: string): string;
-  verifyRequest(
-    url: string,
-    headers: Record<string, string>,
-  ): Promise<ClerkVerification | null>;
+  verifyRequest(url: string): Promise<ClerkVerification | null>;
 }
 
 export function createServerClerkVerifier(
@@ -27,24 +24,20 @@ export function createServerClerkVerifier(
       return signInUrl.toString();
     },
 
-    async verifyRequest(
-      url: string,
-      headers: Record<string, string>,
-    ): Promise<ClerkVerification | null> {
+    async verifyRequest(url: string): Promise<ClerkVerification | null> {
+      const parsedUrl = new URL(url);
+
+      // Get session token: __clerk_db_jwt for dev, __session for JWT templates
+      const jwt =
+        parsedUrl.searchParams.get("__clerk_db_jwt") ??
+        parsedUrl.searchParams.get("__session");
+
+      if (!jwt) return null;
+
       try {
-        // Use Clerk's authenticateRequest which handles dev browser tokens
-        const clerkHeaders = new Headers();
-        for (const [key, value] of Object.entries(headers)) {
-          clerkHeaders.set(key, value);
-        }
-
-        const request = new Request(url, { headers: clerkHeaders });
-        const requestState =
-          await clerkClient.authenticateRequest(request);
-
-        if (!requestState.isSignedIn) return null;
-
-        const userId = requestState.toAuth()?.userId;
+        // For dev browser tokens, use Clerk's verifyToken which
+        // handles the dvb_ prefix tokens
+        const { userId } = await (clerkClient as any).verifyToken(jwt);
         if (!userId) return null;
 
         const user = await clerkClient.users.getUser(userId);
@@ -59,7 +52,8 @@ export function createServerClerkVerifier(
           email: primaryEmail.emailAddress,
           userId: user.id,
         };
-      } catch {
+      } catch (err) {
+        // Token verification or user lookup failed
         return null;
       }
     },
