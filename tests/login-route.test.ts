@@ -18,7 +18,7 @@ class FakeClerkVerifier {
 		return "https://clerk.example.com/sign-in";
 	}
 
-	async verifyRequest(_url: string) {
+	async verifyRequest(_request: IncomingMessage) {
 		return { email: this.email, userId: "test_user_id" };
 	}
 }
@@ -155,7 +155,7 @@ describe("/login/callback route", () => {
 			}
 
 			async verifyRequest(
-				_url: string,
+				_request: IncomingMessage,
 			): Promise<{ email: string; userId: string } | null> {
 				throw new Error("Clerk verification failed");
 			}
