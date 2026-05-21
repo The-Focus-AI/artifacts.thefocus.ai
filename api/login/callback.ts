@@ -37,7 +37,9 @@ export async function handleLoginCallback(
 	deps: LoginCallbackDeps,
 ): Promise<void> {
 	const url = requestToUrl(nodeRequest);
-	const portParam = url.searchParams.get("port");
+	// Port from query param (direct callback) or cookie (routed via root page)
+	const portParam =
+		url.searchParams.get("port") ?? readCookie(nodeRequest, "artifacts_login_port");
 
 	// Verify the Clerk session
 	let verification: ClerkVerification | null;
@@ -146,4 +148,17 @@ function escapeHtml(text: string): string {
 		.replaceAll(">", "&gt;")
 		.replaceAll('"', "&quot;")
 		.replaceAll("'", "&#39;");
+}
+
+function readCookie(
+	request: IncomingMessage,
+	name: string,
+): string | null {
+	const cookieHeader = request.headers.cookie;
+	if (!cookieHeader) return null;
+	for (const cookie of cookieHeader.split(";")) {
+		const [key, ...rest] = cookie.trim().split("=");
+		if (key === name) return decodeURIComponent(rest.join("="));
+	}
+	return null;
 }
