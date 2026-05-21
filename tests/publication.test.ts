@@ -7,7 +7,10 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryArtifactContentStore,
   InMemoryPublicationMetadataStore,
+  InMemoryPublisherTokenStore,
+  issuePublisherToken,
   publishSingleFileArtifact,
+  publishSingleFileArtifactWithPublisherToken,
   servePublicationRequest,
 } from "../src/index.js";
 
@@ -54,6 +57,48 @@ describe("single-file publish/view path", () => {
     await expect(response.text()).resolves.toBe(
       "<!doctype html><h1>Hello client</h1>",
     );
+  });
+
+  it("requires a valid Publisher Token for authenticated publishing", async () => {
+    const dir = await mkdtemp(
+      join(tmpdir(), "artifacts-authenticated-publish-"),
+    );
+    const htmlPath = join(dir, "client-demo.html");
+    await writeFile(htmlPath, "<!doctype html><h1>Authenticated</h1>");
+    const metadataStore = new InMemoryPublicationMetadataStore();
+    const contentStore = new InMemoryArtifactContentStore();
+    const tokenStore = new InMemoryPublisherTokenStore();
+    const issued = await issuePublisherToken({
+      email: "publisher@thefocus.ai",
+      store: tokenStore,
+      tokenFactory: () => "tfai_pub_publish",
+    });
+
+    const published = await publishSingleFileArtifactWithPublisherToken({
+      filePath: htmlPath,
+      publisherToken: issued.token,
+      publicBaseUrl: "https://artifacts.thefocus.ai",
+      metadataStore,
+      contentStore,
+      tokenStore,
+    });
+
+    expect(published.publicationUrl).toMatch(
+      /^https:\/\/artifacts\.thefocus\.ai\/a\//,
+    );
+    await expect(
+      metadataStore.getByOpaqueId(published.opaqueId),
+    ).resolves.toMatchObject({ publisherEmail: "publisher@thefocus.ai" });
+    await expect(
+      publishSingleFileArtifactWithPublisherToken({
+        filePath: htmlPath,
+        publisherToken: "wrong",
+        publicBaseUrl: "https://artifacts.thefocus.ai",
+        metadataStore,
+        contentStore,
+        tokenStore,
+      }),
+    ).rejects.toThrow("valid Publisher Token");
   });
 
   it("only serves canonical /a/{opaque} Publication URLs", async () => {
