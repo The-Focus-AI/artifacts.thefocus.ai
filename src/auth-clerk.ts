@@ -7,7 +7,10 @@ export interface ClerkVerification {
 
 export interface ClerkVerifier {
   buildSignInUrl(currentUrl: string): string;
-  verifyRequest(url: string): Promise<ClerkVerification | null>;
+  verifyRequest(
+    url: string,
+    headers: Record<string, string>,
+  ): Promise<ClerkVerification | null>;
 }
 
 export function createServerClerkVerifier(
@@ -24,20 +27,24 @@ export function createServerClerkVerifier(
       return signInUrl.toString();
     },
 
-    async verifyRequest(url: string): Promise<ClerkVerification | null> {
-      const parsedUrl = new URL(url);
-
-      // Try to get the Clerk session token from URL params
-      const jwt =
-        parsedUrl.searchParams.get("__clerk_db_jwt") ??
-        parsedUrl.searchParams.get("__session");
-
-      if (!jwt) return null;
-
+    async verifyRequest(
+      url: string,
+      headers: Record<string, string>,
+    ): Promise<ClerkVerification | null> {
       try {
-        // Verify the session token — no jwtKey needed for standard Clerk tokens
-        const result = await (clerkClient as any).verifyToken(jwt);
-        const userId = result?.sub;
+        // Use Clerk's authenticateRequest which handles dev browser tokens
+        const clerkHeaders = new Headers();
+        for (const [key, value] of Object.entries(headers)) {
+          clerkHeaders.set(key, value);
+        }
+
+        const request = new Request(url, { headers: clerkHeaders });
+        const requestState =
+          await clerkClient.authenticateRequest(request);
+
+        if (!requestState.isSignedIn) return null;
+
+        const userId = requestState.toAuth()?.userId;
         if (!userId) return null;
 
         const user = await clerkClient.users.getUser(userId);
