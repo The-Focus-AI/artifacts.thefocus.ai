@@ -44,6 +44,8 @@ export async function runCli(
         entryPage: options["entry-page"],
         env,
         configDir,
+        forceNew: Object.hasOwn(options, "new"),
+        updatePublicationUrl: options.update,
       });
       stdout.write(`${singleFilePublishSummary(result)}\n`);
       return 0;
@@ -95,8 +97,17 @@ function parseFlags(flags: string[]): Record<string, string | undefined> {
     const flag = flags[index];
     if (!flag?.startsWith("--")) continue;
     const [name, inlineValue] = flag.slice(2).split("=", 2);
-    parsed[name] = inlineValue ?? flags[index + 1];
-    if (!inlineValue) index += 1;
+    if (inlineValue !== undefined) {
+      parsed[name] = inlineValue;
+      continue;
+    }
+    const next = flags[index + 1];
+    if (next && !next.startsWith("--")) {
+      parsed[name] = next;
+      index += 1;
+      continue;
+    }
+    parsed[name] = undefined;
   }
   return parsed;
 }
@@ -105,7 +116,7 @@ function printUsage(stderr: Pick<NodeJS.WriteStream, "write">): void {
   stderr.write(
     "Usage: artifacts <login|logout|whoami|publish>\n" +
       "  artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
-      "  artifacts publish <file.html|directory> [--entry-page index.html] [--base-url https://artifacts.thefocus.ai]\n" +
+      "  artifacts publish <file.html|directory> [--entry-page index.html] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>]\n" +
       "  artifacts whoami\n" +
       "  artifacts logout\n",
   );

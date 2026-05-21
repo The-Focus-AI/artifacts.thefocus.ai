@@ -6,6 +6,19 @@ export interface LocalPublisherConfig {
   token: string;
 }
 
+export interface LocalPublicationState {
+  localSourcePath: string;
+  opaqueId: string;
+  publicationUrl: string;
+  revisionWindowExpiresAt: Date;
+}
+
+export interface PublicationStateStore {
+  get(localSourcePath: string): Promise<LocalPublicationState | null>;
+  set(state: LocalPublicationState): Promise<void>;
+  clear(localSourcePath: string): Promise<void>;
+}
+
 export interface PublisherTokenLookupResult {
   token: string | null;
   source: "environment" | "local-config" | "missing";
@@ -22,6 +35,10 @@ export function defaultConfigDir(env: NodeJS.ProcessEnv = process.env): string {
 
 export function configFilePath(configDir = defaultConfigDir()): string {
   return join(configDir, "config.json");
+}
+
+export function stateFilePath(configDir = defaultConfigDir()): string {
+  return join(configDir, "state.json");
 }
 
 export async function readLocalPublisherConfig(
@@ -70,4 +87,98 @@ export async function resolvePublisherToken(
   );
   if (config?.token) return { token: config.token, source: "local-config" };
   return { token: null, source: "missing" };
+}
+
+export class InMemoryPublicationStateStore implements PublicationStateStore {
+  private readonly rows = new Map<string, LocalPublicationState>();
+
+  async get(localSourcePath: string): Promise<LocalPublicationState | null> {
+    const row = this.rows.get(localSourcePath);
+    return row ? cloneLocalPublicationState(row) : null;
+  }
+
+  async set(state: LocalPublicationState): Promise<void> {
+    this.rows.set(state.localSourcePath, cloneLocalPublicationState(state));
+  }
+
+  async clear(localSourcePath: string): Promise<void> {
+    this.rows.delete(localSourcePath);
+  }
+}
+
+export class FilePublicationStateStore implements PublicationStateStore {
+  constructor(private readonly configDir = defaultConfigDir()) {}
+
+  async get(localSourcePath: string): Promise<LocalPublicationState | null> {
+    const state = await this.readStateFile();
+    const row = state[localSourcePath];
+    return row ? parseLocalPublicationState(row) : null;
+  }
+
+  async set(state: LocalPublicationState): Promise<void> {
+    const rows = await this.readStateFile();
+    rows[state.localSourcePath] = {
+      localSourcePath: state.localSourcePath,
+      opaqueId: state.opaqueId,
+      publicationUrl: state.publicationUrl,
+      revisionWindowExpiresAt: state.revisionWindowExpiresAt.toISOString(),
+    };
+    await this.writeStateFile(rows);
+  }
+
+  async clear(localSourcePath: string): Promise<void> {
+    const rows = await this.readStateFile();
+    delete rows[localSourcePath];
+    await this.writeStateFile(rows);
+  }
+
+  private async readStateFile(): Promise<
+    Record<string, SerializedLocalPublicationState>
+  > {
+    try {
+      const raw = await readFile(stateFilePath(this.configDir), "utf8");
+      return JSON.parse(raw) as Record<string, SerializedLocalPublicationState>;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+      throw error;
+    }
+  }
+
+  private async writeStateFile(
+    rows: Record<string, SerializedLocalPublicationState>,
+  ): Promise<void> {
+    const filePath = stateFilePath(this.configDir);
+    await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
+    await writeFile(`${filePath}.tmp`, `${JSON.stringify(rows, null, 2)}\n`, {
+      mode: 0o600,
+    });
+    await rename(`${filePath}.tmp`, filePath);
+  }
+}
+
+interface SerializedLocalPublicationState {
+  localSourcePath: string;
+  opaqueId: string;
+  publicationUrl: string;
+  revisionWindowExpiresAt: string;
+}
+
+function parseLocalPublicationState(
+  state: SerializedLocalPublicationState,
+): LocalPublicationState {
+  return {
+    localSourcePath: state.localSourcePath,
+    opaqueId: state.opaqueId,
+    publicationUrl: state.publicationUrl,
+    revisionWindowExpiresAt: new Date(state.revisionWindowExpiresAt),
+  };
+}
+
+function cloneLocalPublicationState(
+  state: LocalPublicationState,
+): LocalPublicationState {
+  return {
+    ...state,
+    revisionWindowExpiresAt: new Date(state.revisionWindowExpiresAt),
+  };
 }
