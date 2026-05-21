@@ -1,113 +1,137 @@
-import { createClerkClient, verifyToken } from "@clerk/backend";
-import type { IncomingMessage } from "node:http";
+import { createClerkClient } from "@clerk/backend";
+import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 
 export interface ClerkVerification {
   email: string;
   userId: string;
 }
 
+export type ClerkAuthResult =
+  | { kind: "authenticated"; verification: ClerkVerification }
+  | { kind: "redirect"; headers: Headers }
+  | { kind: "unauthenticated"; message: string };
+
 export interface ClerkVerifier {
-  buildSignInUrl(currentUrl: string): string;
-  /**
-   * Verify a Clerk session form the incoming request after a hosted sign-in
-   * page redirect. Reads the `__session` cookie set by Clerk on the
-   * application domain (production pattern), falling back to the
-   * `__clerk_db_jwt` query parameter (development-only pattern).
-   */
-  verifyRequest(request: IncomingMessage): Promise<ClerkVerification | null>;
+  authenticateRequest(request: IncomingMessage): Promise<ClerkAuthResult>;
+}
+
+export function buildClerkSignInUrl(
+  returnUrl: string,
+  signInDomain = process.env["CLERK_SIGN_IN_DOMAIN"] ??
+    "possible-shrew-37.accounts.dev",
+): string {
+  const signInUrl = new URL(`https://${signInDomain}/sign-in`);
+  signInUrl.searchParams.set("redirect_url", returnUrl);
+  return signInUrl.toString();
 }
 
 export function createServerClerkVerifier(
   secretKey = requiredEnv("CLERK_SECRET_KEY"),
-  signInDomain = process.env["CLERK_SIGN_IN_DOMAIN"],
+  publishableKey = requiredEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"),
 ): ClerkVerifier {
-  const clerkClient = createClerkClient({ secretKey });
+  const clerkClient = createClerkClient({ secretKey, publishableKey });
 
   return {
-    buildSignInUrl(currentUrl: string) {
-      const domain = signInDomain ?? "clerk.artifacts.thefocus.ai";
-      const signInUrl = new URL(`https://${domain}/sign-in`);
-      signInUrl.searchParams.set("redirect_url", currentUrl);
-      return signInUrl.toString();
-    },
-
-    async verifyRequest(
+    async authenticateRequest(
       request: IncomingMessage,
-    ): Promise<ClerkVerification | null> {
-      // Production: Clerk sets a short-lived `__session` cookie on
-      // the application domain after the hosted sign-in page
-      // redirect. This is the primary token source.
-      const cookieToken = readCookie(request, "__session");
+    ): Promise<ClerkAuthResult> {
+      const webRequest = toWebRequest(request);
+      const requestState = await clerkClient.authenticateRequest(webRequest, {
+        authorizedParties: authorizedPartiesFor(request),
+      });
 
-      // Development fallback: Clerk's `.accounts.dev` domains
-      // append `__clerk_db_jwt` as a query parameter. Never
-      // present in production.
-      const url = requestToUrl(request);
-      const queryToken = url.searchParams.get("__clerk_db_jwt");
-
-      const sessionToken = cookieToken ?? queryToken;
-
-      if (!sessionToken) return null;
-
-      try {
-        // Verify the JWT signature and extract the user ID (sub).
-        // `verifyToken()` is a standalone export — NOT a method
-        // on clerkClient. See:
-        // https://clerk.com/docs/reference/backend/verify-token
-        const result = await verifyToken(sessionToken, {
-          secretKey,
-          authorizedParties: ["https://artifacts.thefocus.ai"],
-        });
-
-        if (result.errors || !result.data) {
-          console.error(
-            "clerk: verifyToken failed:",
-            JSON.stringify(result.errors),
-          );
-          return null;
-        }
-
-        const userId = (result.data as Record<string, unknown>).sub as
-          | string
-          | undefined;
-        if (!userId) return null;
-
-        // The session token does NOT include the user's email —
-        // fetch the full User object from the Backend API.
-        const user = await clerkClient.users.getUser(userId);
-        const primaryEmail =
-          user.emailAddresses.find(
-            (e) => e.id === user.primaryEmailAddressId,
-          ) ?? user.emailAddresses[0];
-
-        if (!primaryEmail?.emailAddress) return null;
-
-        return {
-          email: primaryEmail.emailAddress,
-          userId: user.id,
-        };
-      } catch (err) {
-        // Token verification or user lookup failed
-        return null;
+      if (requestState.status === "handshake") {
+        return { kind: "redirect", headers: requestState.headers };
       }
+
+      if (!requestState.isAuthenticated) {
+        return {
+          kind: "unauthenticated",
+          message:
+            requestState.message ||
+            requestState.reason ||
+            "Could not verify your Clerk session.",
+        };
+      }
+
+      const auth = requestState.toAuth();
+      if (!auth.userId) {
+        return {
+          kind: "unauthenticated",
+          message: "Clerk authenticated the request but did not return a user.",
+        };
+      }
+
+      const email = await primaryEmailForUser(clerkClient, auth.userId);
+      if (!email) {
+        return {
+          kind: "unauthenticated",
+          message:
+            "Clerk authenticated the request but no email was available.",
+        };
+      }
+
+      return {
+        kind: "authenticated",
+        verification: { email, userId: auth.userId },
+      };
     },
   };
 }
 
-function readCookie(request: IncomingMessage, name: string): string | null {
-  const cookieHeader = request.headers.cookie;
-  if (!cookieHeader) return null;
-  for (const cookie of cookieHeader.split(";")) {
-    const [key, ...rest] = cookie.trim().split("=");
-    if (key === name) return decodeURIComponent(rest.join("="));
+async function primaryEmailForUser(
+  clerkClient: ReturnType<typeof createClerkClient>,
+  userId: string,
+): Promise<string | null> {
+  const user = await clerkClient.users.getUser(userId);
+  const primaryEmail =
+    user.emailAddresses.find(
+      (email) => email.id === user.primaryEmailAddressId,
+    ) ?? user.emailAddresses[0];
+
+  return primaryEmail?.emailAddress ?? null;
+}
+
+function toWebRequest(request: IncomingMessage): Request {
+  return new Request(requestToUrl(request), {
+    method: request.method ?? "GET",
+    headers: toWebHeaders(request.headers),
+  });
+}
+
+function toWebHeaders(headers: IncomingHttpHeaders): Headers {
+  const webHeaders = new Headers();
+  for (const [name, value] of Object.entries(headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) webHeaders.append(name, item);
+      continue;
+    }
+    webHeaders.set(name, value);
   }
-  return null;
+  return webHeaders;
+}
+
+function authorizedPartiesFor(request: IncomingMessage): string[] {
+  const configured = process.env["CLERK_AUTHORIZED_PARTIES"];
+  if (configured) {
+    return configured
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+  }
+
+  return [requestToUrl(request).origin];
 }
 
 function requestToUrl(request: IncomingMessage): URL {
-  const host = request.headers.host ?? "localhost";
-  const protocol = request.headers["x-forwarded-proto"] ?? "https";
+  const host = firstHeader(request.headers.host) ?? "localhost";
+  const protocol = firstHeader(request.headers["x-forwarded-proto"]) ?? "https";
   return new URL(request.url ?? "/", `${protocol}://${host}`);
+}
+
+function firstHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function requiredEnv(name: string): string {

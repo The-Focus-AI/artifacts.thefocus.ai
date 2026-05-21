@@ -9,8 +9,8 @@ import {
 
 import {
   createServerClerkVerifier,
+  type ClerkAuthResult,
   type ClerkVerifier,
-  type ClerkVerification,
 } from "../../src/auth-clerk.js";
 
 export default async function handler(
@@ -32,83 +32,139 @@ export interface LoginCallbackDeps {
 }
 
 export async function handleLoginCallback(
-  nodeRequest: IncomingMessage,
-  nodeResponse: ServerResponse,
+  request: IncomingMessage,
+  response: ServerResponse,
   deps: LoginCallbackDeps,
 ): Promise<void> {
-  const url = requestToUrl(nodeRequest);
-  // Port from query param (direct callback) or cookie (routed via root page)
-  const portParam =
-    url.searchParams.get("port") ??
-    readCookie(nodeRequest, "artifacts_login_port");
+  const port = readLocalCallbackPort(request);
+  const authResult = await authenticateWithClerk(request, response, deps.clerk);
 
-  // Verify the Clerk session from the incoming request.
-  // The verifier reads the `__session` cookie (production) or
-  // `__clerk_db_jwt` query param (development-only).
-  let verification: ClerkVerification | null;
-  try {
-    verification = await deps.clerk.verifyRequest(nodeRequest);
-  } catch (err) {
-    showError(
-      nodeResponse,
-      "Authentication failed: " +
-        (err instanceof Error ? err.message : String(err)),
-    );
+  if (authResult.kind === "response-sent") return;
+
+  if (authResult.kind === "unauthenticated") {
+    sendLoginPage(response, {
+      statusCode: 400,
+      title: "Login failed",
+      heading: "Login failed",
+      tone: "error",
+      body: authResult.message,
+    });
     return;
   }
 
-  if (!verification?.email) {
-    console.error("callback: no email in verification");
-    showError(
-      nodeResponse,
-      "Could not verify your email address. Please try again.",
-    );
-    return;
-  }
+  const { email } = authResult.verification;
 
-  if (!isTheFocusPublisherEmail(verification.email)) {
-    const port = parseInt(portParam ?? "0", 10);
-    if (port > 0 && port < 65536) {
+  if (!isTheFocusPublisherEmail(email)) {
+    const message =
+      "Publishing is limited to verified email addresses ending exactly in @thefocus.ai.";
+
+    if (port) {
       redirect(
-        nodeResponse,
-        `http://localhost:${port}/callback?error=${encodeURIComponent(
-          "Publishing is limited to verified email addresses ending exactly in @thefocus.ai.",
-        )}`,
+        response,
+        `http://localhost:${port}/callback?error=${encodeURIComponent(message)}`,
       );
       return;
     }
-    showError(
-      nodeResponse,
-      `Publishing is limited to verified email addresses ending exactly in @thefocus.ai. Received: ${verification.email}`,
-    );
+
+    sendLoginPage(response, {
+      statusCode: 403,
+      title: "Login not allowed",
+      heading: "Login not allowed",
+      tone: "error",
+      body: message,
+    });
     return;
   }
 
-  // Issue the publisher token
   const result = await issuePublisherToken({
-    email: verification.email,
+    email,
     store: deps.tokenStore,
     now: deps.now,
     tokenFactory: deps.tokenFactory,
   });
 
-  // Redirect to localhost callback with the token
-  const port = parseInt(portParam ?? "0", 10);
-  if (port > 0 && port < 65536) {
+  if (port) {
     redirect(
-      nodeResponse,
+      response,
       `http://localhost:${port}/callback?token=${encodeURIComponent(result.token)}`,
     );
     return;
   }
 
-  // Fallback: display the token on a page
-  showTokenDisplay(nodeResponse, result.token, verification.email);
+  showTokenDisplay(response, result.token, email);
+}
+
+type CallbackAuthResult =
+  | {
+      kind: "authenticated";
+      verification: Extract<
+        ClerkAuthResult,
+        { kind: "authenticated" }
+      >["verification"];
+    }
+  | { kind: "unauthenticated"; message: string }
+  | { kind: "response-sent" };
+
+async function authenticateWithClerk(
+  request: IncomingMessage,
+  response: ServerResponse,
+  clerk: ClerkVerifier,
+): Promise<CallbackAuthResult> {
+  try {
+    const result = await clerk.authenticateRequest(request);
+
+    if (result.kind === "redirect") {
+      forwardClerkRedirect(response, result.headers);
+      return { kind: "response-sent" };
+    }
+
+    return result;
+  } catch (error) {
+    return {
+      kind: "unauthenticated",
+      message:
+        "Authentication failed: " +
+        (error instanceof Error ? error.message : String(error)),
+    };
+  }
+}
+
+function readLocalCallbackPort(request: IncomingMessage): number | null {
+  const url = requestToUrl(request);
+  const rawPort =
+    url.searchParams.get("port") ?? readCookie(request, "artifacts_login_port");
+  const port = parseInt(rawPort ?? "", 10);
+  return port > 0 && port < 65536 ? port : null;
+}
+
+function forwardClerkRedirect(
+  response: ServerResponse,
+  headers: Headers,
+): void {
+  const location = headers.get("location");
+  if (!location) {
+    sendLoginPage(response, {
+      statusCode: 400,
+      title: "Login failed",
+      heading: "Login failed",
+      tone: "error",
+      body: "Clerk requested an authentication handshake without a redirect location.",
+    });
+    return;
+  }
+
+  for (const [name, value] of headers.entries()) {
+    if (name.toLowerCase() === "location") continue;
+    response.setHeader(name, value);
+  }
+
+  response.writeHead(307, { Location: location });
+  response.end();
 }
 
 function requestToUrl(request: IncomingMessage): URL {
-  const host = request.headers.host ?? "localhost";
-  const protocol = request.headers["x-forwarded-proto"] ?? "https";
+  const host = firstHeader(request.headers.host) ?? "localhost";
+  const protocol = firstHeader(request.headers["x-forwarded-proto"]) ?? "https";
   return new URL(request.url ?? "/", `${protocol}://${host}`);
 }
 
@@ -117,34 +173,60 @@ function redirect(response: ServerResponse, location: string): void {
   response.end();
 }
 
-function showError(response: ServerResponse, message: string): void {
-  response.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-  response.end(`<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Login failed — Artifacts</title></head>
-<body>
-  <h1>Login failed</h1>
-  <p>${escapeHtml(message)}</p>
-  <p><a href="/">Return to TheFocus.AI Artifacts</a></p>
-</body>
-</html>`);
-}
-
 function showTokenDisplay(
   response: ServerResponse,
   token: string,
   email: string,
 ): void {
-  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  sendLoginPage(response, {
+    statusCode: 200,
+    title: "Publisher Token — Artifacts",
+    heading: "Publisher Token created",
+    tone: "success",
+    body: `Signed in as ${escapeHtml(email)}. Run this command to store your Publisher Token:<pre><code>artifacts login --token ${escapeHtml(token)}</code></pre>`,
+  });
+}
+
+function sendLoginPage(
+  response: ServerResponse,
+  options: {
+    statusCode: number;
+    title: string;
+    heading: string;
+    tone: "success" | "error";
+    body: string;
+  },
+): void {
+  const accent = options.tone === "success" ? "#16a34a" : "#dc2626";
+  response.writeHead(options.statusCode, {
+    "Content-Type": "text/html; charset=utf-8",
+  });
   response.end(`<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Publisher Token — Artifacts</title></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(options.title)}</title>
+  <style>
+    :root { color-scheme: light; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f5f5f4; color: #1c1917; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { width: min(560px, calc(100vw - 48px)); background: #fff; border: 1px solid #e7e5e4; padding: 40px; box-shadow: 0 24px 60px rgba(28, 25, 23, 0.08); }
+    .eyebrow { margin: 0 0 24px; font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #78716c; }
+    h1 { margin: 0 0 16px; font-size: 32px; line-height: 1.1; letter-spacing: -0.04em; }
+    .rule { width: 64px; height: 4px; background: ${accent}; margin: 0 0 24px; }
+    p { margin: 0 0 24px; color: #57534e; font-size: 16px; line-height: 1.6; }
+    a { color: #1c1917; font-weight: 700; text-underline-offset: 4px; }
+    pre { margin: 20px 0 0; padding: 16px; overflow-x: auto; background: #292524; color: #fafaf9; font-size: 13px; line-height: 1.5; }
+  </style>
+</head>
 <body>
-  <h1>Publisher Token for ${escapeHtml(email)}</h1>
-  <p>Run the following command to store your Publisher Token:</p>
-  <pre><code>artifacts login --token ${escapeHtml(token)}</code></pre>
-  <p>This token is your local credential for publishing. Store it in a safe place.</p>
-  <p><a href="/">Return to TheFocus.AI Artifacts</a></p>
+  <main>
+    <p class="eyebrow">TheFocus.AI Artifacts</p>
+    <h1>${escapeHtml(options.heading)}</h1>
+    <div class="rule"></div>
+    <p>${options.body}</p>
+    <a href="/">Return to TheFocus.AI Artifacts</a>
+  </main>
 </body>
 </html>`);
 }
@@ -166,4 +248,8 @@ function readCookie(request: IncomingMessage, name: string): string | null {
     if (key === name) return decodeURIComponent(rest.join("="));
   }
   return null;
+}
+
+function firstHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
