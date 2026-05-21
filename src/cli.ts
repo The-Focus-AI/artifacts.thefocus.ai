@@ -15,7 +15,7 @@ import {
 } from "./local-config.js";
 import {
   publishArtifactFromEnvironment,
-  singleFilePublishSummary,
+  publishArtifactSummary,
 } from "./publication.js";
 
 export interface CliDependencies {
@@ -45,7 +45,9 @@ export async function runCli(
         env,
         configDir,
       });
-      stdout.write(`${singleFilePublishSummary(result)}\n`);
+      stdout.write(
+        `${publishArtifactSummary(result, { verbose: options.verbose === "true" })}\n`,
+      );
       return 0;
     }
 
@@ -95,8 +97,17 @@ function parseFlags(flags: string[]): Record<string, string | undefined> {
     const flag = flags[index];
     if (!flag?.startsWith("--")) continue;
     const [name, inlineValue] = flag.slice(2).split("=", 2);
-    parsed[name] = inlineValue ?? flags[index + 1];
-    if (!inlineValue) index += 1;
+    if (inlineValue) {
+      parsed[name] = inlineValue;
+      continue;
+    }
+    const next = flags[index + 1];
+    if (!next || next.startsWith("--")) {
+      parsed[name] = "true";
+      continue;
+    }
+    parsed[name] = next;
+    index += 1;
   }
   return parsed;
 }
