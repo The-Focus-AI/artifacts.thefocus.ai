@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import {
   basename,
   extname,
@@ -14,7 +14,11 @@ import {
   createNeonPublisherTokenStore,
   type PublisherTokenStore,
 } from "./auth.js";
-import { resolvePublisherToken } from "./local-config.js";
+import {
+  FilePublicationStateStore,
+  resolvePublisherToken,
+  type PublicationStateStore,
+} from "./local-config.js";
 import {
   type ArtifactContentStore,
   VercelBlobArtifactContentStore,
@@ -104,6 +108,40 @@ export interface PublishDirectoryArtifactResult {
   manifestRef: string;
   manifestLocator: string;
   entryArtifactPath: string;
+  artifactPaths: string[];
+}
+
+export type PublishArtifactDecision =
+  | "created"
+  | "updated"
+  | "created-after-expiry"
+  | "forced-new"
+  | "explicit-update"
+  | "created-after-removed-local-state";
+
+export interface PublishArtifactInput {
+  sourcePath: string;
+  publisherEmail: string;
+  publicBaseUrl: string;
+  metadataStore: PublicationMetadataStore;
+  contentStore: ArtifactContentStore;
+  stateStore: PublicationStateStore;
+  entryPage?: string;
+  forceNew?: boolean;
+  updatePublicationUrl?: string;
+  opaqueIdFactory?: () => string;
+  manifestRefFactory?: (body: Buffer) => string;
+  now?: () => Date;
+}
+
+export interface PublishArtifactResult {
+  opaqueId: string;
+  publicationUrlPath: string;
+  publicationUrl: string;
+  manifestRef: string;
+  activeArtifactLocator: string;
+  revisionWindowExpiresAt: Date;
+  decision: PublishArtifactDecision;
   artifactPaths: string[];
 }
 
@@ -204,6 +242,69 @@ export async function publishDirectoryArtifact(
     entryArtifactPath,
     artifactPaths: Object.keys(manifest.files),
   };
+}
+
+export async function publishArtifact(
+  input: PublishArtifactInput,
+): Promise<PublishArtifactResult> {
+  const now = input.now?.() ?? new Date();
+  const localSourcePath = await realpath(input.sourcePath);
+  const revisionWindowExpiresAt = addMinutes(now, 15);
+  const packaged = await packageArtifactSource(input, localSourcePath);
+
+  if (input.updatePublicationUrl) {
+    const opaqueId = opaqueIdFromPublicationUrl(input.updatePublicationUrl);
+    if (!opaqueId) throw new Error("--update requires a Publication URL.");
+    return updateExistingPublication({
+      ...input,
+      localSourcePath,
+      opaqueId,
+      packaged,
+      revisionWindowExpiresAt,
+      decision: "explicit-update",
+    });
+  }
+
+  const existingState = await input.stateStore.get(localSourcePath);
+  if (!input.forceNew && existingState) {
+    const publication = await input.metadataStore.getByOpaqueId(
+      existingState.opaqueId,
+    );
+    if (publication?.status === "active") {
+      if (existingState.revisionWindowExpiresAt.getTime() >= now.getTime()) {
+        return updateExistingPublication({
+          ...input,
+          localSourcePath,
+          opaqueId: existingState.opaqueId,
+          packaged,
+          revisionWindowExpiresAt,
+          decision: "updated",
+        });
+      }
+      return createFreshPublication({
+        ...input,
+        localSourcePath,
+        packaged,
+        revisionWindowExpiresAt,
+        decision: "created-after-expiry",
+      });
+    }
+    return createFreshPublication({
+      ...input,
+      localSourcePath,
+      packaged,
+      revisionWindowExpiresAt,
+      decision: "created-after-removed-local-state",
+    });
+  }
+
+  return createFreshPublication({
+    ...input,
+    localSourcePath,
+    packaged,
+    revisionWindowExpiresAt,
+    decision: input.forceNew ? "forced-new" : "created",
+  });
 }
 
 export interface ServePublicationInput {
@@ -351,8 +452,10 @@ export async function publishArtifactFromEnvironment(
     entryPage?: string;
     env?: NodeJS.ProcessEnv;
     configDir?: string;
+    forceNew?: boolean;
+    updatePublicationUrl?: string;
   } = {},
-): Promise<PublishSingleFileArtifactResult | PublishDirectoryArtifactResult> {
+): Promise<PublishArtifactResult> {
   const env = options.env ?? process.env;
   const token = await resolvePublisherToken({
     env,
@@ -363,23 +466,18 @@ export async function publishArtifactFromEnvironment(
     token: token.token,
     store: createNeonPublisherTokenStore(),
   });
-  const dependencies = {
+  return publishArtifact({
+    sourcePath,
     publicBaseUrl:
       options.publicBaseUrl ?? requiredEnv("ARTIFACTS_PUBLIC_BASE_URL"),
     publisherEmail,
     metadataStore: createNeonPublicationMetadataStore(),
     contentStore: new VercelBlobArtifactContentStore(),
-  };
-
-  const sourceStats = await stat(resolve(sourcePath));
-  if (sourceStats.isDirectory()) {
-    return publishDirectoryArtifact({
-      directoryPath: sourcePath,
-      entryPage: options.entryPage,
-      ...dependencies,
-    });
-  }
-  return publishSingleFileArtifact({ filePath: sourcePath, ...dependencies });
+    stateStore: new FilePublicationStateStore(options.configDir),
+    entryPage: options.entryPage,
+    forceNew: options.forceNew,
+    updatePublicationUrl: options.updatePublicationUrl,
+  });
 }
 
 export async function publishSingleFileArtifactFromEnvironment(
@@ -402,9 +500,254 @@ export function singleFilePublishSummary(
   result: Pick<
     PublishSingleFileArtifactResult,
     "publicationUrlPath" | "publicationUrl"
-  >,
+  > & { revisionWindowExpiresAt?: Date; decision?: PublishArtifactDecision },
 ): string {
-  return `Published ${basename(result.publicationUrlPath)} to ${result.publicationUrl}`;
+  const suffix = result.revisionWindowExpiresAt
+    ? ` (Revision Window until ${result.revisionWindowExpiresAt.toISOString()})`
+    : "";
+  const action = result.decision?.includes("update") ? "Updated" : "Published";
+  return `${action} ${basename(result.publicationUrlPath)} to ${result.publicationUrl}${suffix}`;
+}
+
+interface PackagedArtifact {
+  manifestRef: string;
+  activeArtifactLocator: string;
+  artifactPaths: string[];
+}
+
+async function packageArtifactSource(
+  input: Pick<
+    PublishArtifactInput,
+    "sourcePath" | "entryPage" | "contentStore" | "manifestRefFactory"
+  >,
+  localSourcePath: string,
+): Promise<
+  PackagedArtifact & {
+    writeForPublication: (opaqueId: string) => Promise<PackagedArtifact>;
+  }
+> {
+  return {
+    manifestRef: "pending",
+    activeArtifactLocator: "pending",
+    artifactPaths: [],
+    async writeForPublication(publicationId: string) {
+      const sourceStats = await stat(localSourcePath);
+      if (sourceStats.isDirectory()) {
+        return writeDirectoryArtifactContent({
+          directoryPath: localSourcePath,
+          entryPage: input.entryPage,
+          contentStore: input.contentStore,
+          publicationId,
+          manifestRefFactory: input.manifestRefFactory,
+        });
+      }
+      return writeSingleFileArtifactContent({
+        filePath: localSourcePath,
+        contentStore: input.contentStore,
+        publicationId,
+        manifestRefFactory: input.manifestRefFactory,
+      });
+    },
+  };
+}
+
+async function createFreshPublication(
+  input: PublishArtifactInput & {
+    localSourcePath: string;
+    packaged: {
+      writeForPublication: (opaqueId: string) => Promise<PackagedArtifact>;
+    };
+    revisionWindowExpiresAt: Date;
+    decision: PublishArtifactDecision;
+  },
+): Promise<PublishArtifactResult> {
+  const opaqueId = input.opaqueIdFactory?.() ?? createOpaqueId();
+  const packaged = await input.packaged.writeForPublication(opaqueId);
+  const publication = await input.metadataStore.create({
+    opaqueId,
+    publisherEmail: input.publisherEmail,
+    activeManifestRef: packaged.manifestRef,
+    activeArtifactLocator: packaged.activeArtifactLocator,
+    localSourcePath: input.localSourcePath,
+    revisionWindowExpiresAt: input.revisionWindowExpiresAt,
+  });
+  const publicationUrl = absolutePublicationUrl(
+    input.publicBaseUrl,
+    publication.publicationUrlPath,
+  );
+  await input.stateStore.set({
+    localSourcePath: input.localSourcePath,
+    opaqueId,
+    publicationUrl,
+    revisionWindowExpiresAt: input.revisionWindowExpiresAt,
+  });
+  return {
+    opaqueId,
+    publicationUrlPath: publication.publicationUrlPath,
+    publicationUrl,
+    manifestRef: packaged.manifestRef,
+    activeArtifactLocator: packaged.activeArtifactLocator,
+    revisionWindowExpiresAt: input.revisionWindowExpiresAt,
+    decision: input.decision,
+    artifactPaths: packaged.artifactPaths,
+  };
+}
+
+async function updateExistingPublication(
+  input: PublishArtifactInput & {
+    localSourcePath: string;
+    opaqueId: string;
+    packaged: {
+      writeForPublication: (opaqueId: string) => Promise<PackagedArtifact>;
+    };
+    revisionWindowExpiresAt: Date;
+    decision: PublishArtifactDecision;
+  },
+): Promise<PublishArtifactResult> {
+  const existing = await input.metadataStore.getByOpaqueId(input.opaqueId);
+  if (!existing || existing.status !== "active") {
+    throw new Error(
+      "Publication URL cannot be updated because it is not active.",
+    );
+  }
+  const oldLocators = await activePublicationLocators(
+    existing.activeArtifactLocator,
+    input.contentStore,
+  );
+  const packaged = await input.packaged.writeForPublication(input.opaqueId);
+  const publication = await input.metadataStore.update(input.opaqueId, {
+    activeManifestRef: packaged.manifestRef,
+    activeArtifactLocator: packaged.activeArtifactLocator,
+    localSourcePath: input.localSourcePath,
+    revisionWindowExpiresAt: input.revisionWindowExpiresAt,
+  });
+  if (!publication) throw new Error("Publication URL cannot be updated.");
+  await input.contentStore.delete(oldLocators);
+  const publicationUrl = absolutePublicationUrl(
+    input.publicBaseUrl,
+    publication.publicationUrlPath,
+  );
+  await input.stateStore.set({
+    localSourcePath: input.localSourcePath,
+    opaqueId: input.opaqueId,
+    publicationUrl,
+    revisionWindowExpiresAt: input.revisionWindowExpiresAt,
+  });
+  return {
+    opaqueId: input.opaqueId,
+    publicationUrlPath: publication.publicationUrlPath,
+    publicationUrl,
+    manifestRef: packaged.manifestRef,
+    activeArtifactLocator: packaged.activeArtifactLocator,
+    revisionWindowExpiresAt: input.revisionWindowExpiresAt,
+    decision: input.decision,
+    artifactPaths: packaged.artifactPaths,
+  };
+}
+
+async function writeSingleFileArtifactContent(input: {
+  filePath: string;
+  contentStore: ArtifactContentStore;
+  publicationId: string;
+  manifestRefFactory?: (body: Buffer) => string;
+}): Promise<PackagedArtifact> {
+  const html = await readFile(input.filePath);
+  const manifestRef =
+    input.manifestRefFactory?.(html) ?? createManifestRef(html);
+  const written = await input.contentStore.write({
+    publicationId: input.publicationId,
+    manifestRef,
+    artifactPath: singleFileEntryArtifactPath,
+    body: html,
+    contentType: "text/html; charset=utf-8",
+  });
+  return {
+    manifestRef,
+    activeArtifactLocator: written.url,
+    artifactPaths: [singleFileEntryArtifactPath],
+  };
+}
+
+async function writeDirectoryArtifactContent(input: {
+  directoryPath: string;
+  entryPage?: string;
+  contentStore: ArtifactContentStore;
+  publicationId: string;
+  manifestRefFactory?: (body: Buffer) => string;
+}): Promise<PackagedArtifact> {
+  const entryArtifactPath = normalizeEntryPage(input.entryPage ?? "index.html");
+  const artifactFiles = await collectDirectoryArtifactFiles(
+    input.directoryPath,
+  );
+  const entryFile = artifactFiles.find(
+    (file) => file.artifactPath === entryArtifactPath,
+  );
+  if (!entryFile) {
+    if (!input.entryPage) {
+      throw new Error(
+        "Directory Artifacts require a root index.html by default. Pass --entry-page <file.html> to choose a different HTML Entry Page.",
+      );
+    }
+    throw new Error(
+      `Entry Page not found in directory Artifact: ${entryArtifactPath}`,
+    );
+  }
+  if (!entryArtifactPath.endsWith(".html")) {
+    throw new Error("Directory Artifact Entry Page must be an HTML file.");
+  }
+  const manifestRef =
+    input.manifestRefFactory?.(Buffer.from(input.directoryPath)) ??
+    createManifestRef(Buffer.from(input.directoryPath));
+  const manifest: DirectoryArtifactManifest = {
+    kind: directoryManifestKind,
+    entryArtifactPath,
+    files: {},
+  };
+  for (const file of artifactFiles) {
+    const body = await readFile(file.absolutePath);
+    const contentType = contentTypeForArtifactPath(file.artifactPath);
+    const written = await input.contentStore.write({
+      publicationId: input.publicationId,
+      manifestRef,
+      artifactPath: file.artifactPath,
+      body,
+      contentType,
+    });
+    manifest.files[file.artifactPath] = { locator: written.url, contentType };
+  }
+  const manifestWritten = await input.contentStore.write({
+    publicationId: input.publicationId,
+    manifestRef,
+    artifactPath: directoryManifestArtifactPath,
+    body: JSON.stringify(manifest),
+    contentType: directoryManifestContentType,
+  });
+  return {
+    manifestRef,
+    activeArtifactLocator: manifestWritten.url,
+    artifactPaths: Object.keys(manifest.files),
+  };
+}
+
+async function activePublicationLocators(
+  activeArtifactLocator: string,
+  contentStore: ArtifactContentStore,
+): Promise<string[]> {
+  const activeContent = await contentStore.read(activeArtifactLocator);
+  if (!activeContent || !isDirectoryManifest(activeContent)) {
+    return [activeArtifactLocator];
+  }
+  const manifest = JSON.parse(
+    activeContent.body.toString("utf8"),
+  ) as DirectoryArtifactManifest;
+  return [
+    activeArtifactLocator,
+    ...Object.values(manifest.files).map((file) => file.locator),
+  ];
+}
+
+function addMinutes(date: Date, minutes: number): Date {
+  return new Date(date.getTime() + minutes * 60_000);
 }
 
 async function collectDirectoryArtifactFiles(
