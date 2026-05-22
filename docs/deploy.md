@@ -78,7 +78,7 @@ vercel env ls --scope thefocusai
 
 ## Production deploy
 
-Production code deploys should go through GitHub/Vercel integration. Validate locally, merge to `main`, then push to GitHub and let Vercel auto-deploy:
+Production code deploys are triggered by GitHub/Vercel from `main`:
 
 ```bash
 mise run lint
@@ -87,58 +87,17 @@ mise run deploy
 git push origin main
 ```
 
-Only use direct `vercel deploy` commands when updating Vercel environment variables or debugging with explicit operator approval.
-
-## npm/npx package release
-
-The CLI package is published as `@thefocus/artifacts`, exposing the `artifacts` executable for `npx @thefocus/artifacts ...`.
-
-Before publishing:
-
-```bash
-mise run lint
-mise run test
-mise run deploy
-pnpm pack --dry-run
-```
-
-Inspect the dry-run output. It should contain built files under `dist/src/`, `README.md`, and package metadata only; it should not contain source tests, reports, `.fnox`, or local configuration.
-
-Preferred release path is the `Publish npm package` GitHub Actions workflow using npm Trusted Publishing with provenance. Before the first workflow publish, configure npm so package `@thefocus/artifacts` trusts this repository/workflow (`.github/workflows/npm-publish.yml`) and make sure the GitHub `npm` environment has the intended reviewers.
-
-To publish through GitHub, update `package.json` to the intended version, merge that commit to `main`, then push a matching `vX.Y.Z` tag. The workflow refuses to publish if the pushed tag does not match `package.json` exactly:
-
-```bash
-git checkout main
-git pull --ff-only
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-If Trusted Publishing is not configured yet, a human maintainer with npm publish rights can publish from a clean checkout with a short-lived or granular npm token:
-
-```bash
-npm publish --access public --provenance
-```
-
-After publishing, verify `npx` resolves the package and prints CLI usage:
-
-```bash
-npx @thefocus/artifacts --help
-npx @thefocus/artifacts whoami
-```
-
-`whoami` should either print the active Publisher email when configured or fail with `Not logged in`; either result confirms the executable starts correctly.
+Do not run `vercel deploy` for code changes. Use direct Vercel CLI commands only for environment variable updates or one-time project configuration.
 
 ## Live smoke test
 
-After deploying and confirming env vars are present:
+After deploying and confirming env vars are present, follow the full flow in [Smoke test](smoke-test.md). For a quick publish/view check:
 
 ```bash
 echo '<!doctype html><h1>Smoke</h1>' > /tmp/artifact-smoke.html
 pnpm run build
 ARTIFACTS_PUBLIC_BASE_URL=https://artifacts.thefocus.ai \
-ARTIFACTS_PUBLISHER_EMAIL=you@thefocus.ai \
+THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
 fnox exec -- node dist/src/cli.js publish /tmp/artifact-smoke.html
 ```
 
@@ -165,6 +124,6 @@ Once a Preview URL exists, use that URL as `ARTIFACTS_PUBLIC_BASE_URL` for a smo
 
 ```bash
 ARTIFACTS_PUBLIC_BASE_URL=https://<preview-deployment>.vercel.app \
-ARTIFACTS_PUBLISHER_EMAIL=you@thefocus.ai \
+THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
 fnox exec -- node dist/src/cli.js publish /tmp/artifact-smoke.html
 ```
