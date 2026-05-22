@@ -40,7 +40,7 @@ describe("minimal landing page", () => {
     });
     expect(vercelConfig.rewrites).toContainEqual({
       source: "/a/:opaque/:path*",
-      destination: "/api/a/:opaque/:path*",
+      destination: "/api/a/:opaque?path=:path*",
     });
   });
 });
