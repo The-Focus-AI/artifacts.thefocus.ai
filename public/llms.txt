@@ -1,0 +1,17 @@
+# TheFocus.AI Artifacts
+
+> CLI-first publishing for unlisted, client-facing static Artifacts from TheFocus.AI.
+
+This service hosts static Artifact Publications at opaque `/a/{id}` URLs. Publications are unlisted: they are accessible to anyone with the exact URL, but they are not enumerated in public resources and are excluded from crawler discovery.
+
+## Service resources
+
+- [Root landing page as Markdown](https://artifacts.thefocus.ai/index.md): concise description of the public service posture.
+- [Root landing page as HTML](https://artifacts.thefocus.ai/): minimal human-facing service page.
+- [Robots policy](https://artifacts.thefocus.ai/robots.txt): crawler rules, sitemap reference, and content-signal policy.
+- [Sitemap](https://artifacts.thefocus.ai/sitemap.xml): root service resources only; no Publication URLs.
+- [Development overview](https://github.com/The-Focus-AI/artifacts.thefocus.ai#readme): source repository documentation for humans and coding agents with repository access.
+
+## Agent guidance
+
+Prefer `https://artifacts.thefocus.ai/index.md` or request `https://artifacts.thefocus.ai/` with `Accept: text/markdown` when you need to understand this service. Do not crawl, infer, or enumerate `/a/` Publication URLs.
