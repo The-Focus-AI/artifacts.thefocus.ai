@@ -101,6 +101,42 @@ describe("CLI Publisher Token commands", () => {
     ).resolves.toContain("tfai_pub_callback");
   });
 
+  it("reports missing login before whoami without requiring local infrastructure secrets", async () => {
+    const configDir = await mkdtemp(join(tmpdir(), "artifacts-cli-"));
+    const stderr = streamCapture();
+
+    const exitCode = await runCli(["whoami"], {
+      configDir,
+      env: {},
+      stderr: stderr.stream,
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderr.text()).toContain("Not logged in");
+    expect(stderr.text()).not.toContain("DATABASE_URL");
+    expect(stderr.text()).not.toContain("BLOB_READ_WRITE_TOKEN");
+  });
+
+  it("calls the hosted API for whoami without requiring local infrastructure secrets", async () => {
+    const stdout = streamCapture();
+    const apiClient = {
+      whoami: vi.fn(async () => "remote@thefocus.ai"),
+      list: vi.fn(),
+      remove: vi.fn(),
+      publish: vi.fn(),
+    };
+
+    const exitCode = await runCli(["whoami"], {
+      env: { THEFOCUS_ARTIFACTS_TOKEN: "tfai_pub_remote" },
+      stdout: stdout.stream,
+      apiClient,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(apiClient.whoami).toHaveBeenCalledWith("tfai_pub_remote");
+    expect(stdout.text()).toBe("remote@thefocus.ai\n");
+  });
+
   it("reports whoami for the active token and lets the environment override local config", async () => {
     const configDir = await mkdtemp(join(tmpdir(), "artifacts-cli-"));
     const tokenStore = new InMemoryPublisherTokenStore();

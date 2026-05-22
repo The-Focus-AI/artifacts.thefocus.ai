@@ -172,6 +172,35 @@ export interface RemovePublicationResult {
   clearedLocalSourcePath: string | null;
 }
 
+export type PreparedArtifactUploadKind = "single-file" | "directory";
+
+export interface PreparedArtifactUploadFile {
+  artifactPath: string;
+  body: Buffer;
+  contentType: string;
+}
+
+export interface PreparedArtifactUpload {
+  kind: PreparedArtifactUploadKind;
+  localSourcePath: string;
+  entryArtifactPath: string;
+  files: PreparedArtifactUploadFile[];
+  excludedArtifactPaths: string[];
+}
+
+export interface PublishUploadedArtifactInput {
+  upload: PreparedArtifactUpload;
+  publisherEmail: string;
+  publicBaseUrl: string;
+  metadataStore: PublicationMetadataStore;
+  contentStore: ArtifactContentStore;
+  stateStore: PublicationStateStore;
+  forceNew?: boolean;
+  updatePublicationUrl?: string;
+  opaqueIdFactory?: () => string;
+  now?: () => Date;
+}
+
 interface DirectoryArtifactManifest {
   kind: typeof directoryManifestKind;
   entryArtifactPath: string;
@@ -512,6 +541,116 @@ export async function publishArtifactFromEnvironment(
   });
 }
 
+export async function prepareArtifactUpload(
+  sourcePath: string,
+  options: { entryPage?: string } = {},
+): Promise<PreparedArtifactUpload> {
+  const localSourcePath = await realpath(sourcePath);
+  const sourceStats = await stat(localSourcePath);
+  if (sourceStats.isDirectory()) {
+    const entryArtifactPath = normalizeEntryPage(
+      options.entryPage ?? "index.html",
+    );
+    const { files, excludedArtifactPaths } =
+      await collectDirectoryArtifactFiles(localSourcePath);
+    const entryFile = files.find(
+      (file) => file.artifactPath === entryArtifactPath,
+    );
+    if (!entryFile) {
+      if (!options.entryPage) {
+        throw new Error(
+          "Directory Artifacts require a root index.html by default. Pass --entry-page <file.html> to choose a different HTML Entry Page.",
+        );
+      }
+      throw new Error(
+        `Entry Page not found in directory Artifact: ${entryArtifactPath}`,
+      );
+    }
+    if (!entryArtifactPath.endsWith(".html")) {
+      throw new Error("Directory Artifact Entry Page must be an HTML file.");
+    }
+    return {
+      kind: "directory",
+      localSourcePath,
+      entryArtifactPath,
+      files: await Promise.all(
+        files.map(async (file) => ({
+          artifactPath: file.artifactPath,
+          body: await readFile(file.absolutePath),
+          contentType: contentTypeForArtifactPath(file.artifactPath),
+        })),
+      ),
+      excludedArtifactPaths,
+    };
+  }
+
+  assertFileWithinSingleFileLimit(
+    sourceStats.size,
+    toArtifactPath(basename(localSourcePath)),
+  );
+  return {
+    kind: "single-file",
+    localSourcePath,
+    entryArtifactPath: singleFileEntryArtifactPath,
+    files: [
+      {
+        artifactPath: singleFileEntryArtifactPath,
+        body: await readFile(localSourcePath),
+        contentType: "text/html; charset=utf-8",
+      },
+    ],
+    excludedArtifactPaths: [],
+  };
+}
+
+export async function publishUploadedArtifact(
+  input: PublishUploadedArtifactInput,
+): Promise<PublishArtifactResult & { excludedArtifactPaths: string[] }> {
+  const now = input.now?.() ?? new Date();
+  const revisionWindowExpiresAt = addMinutes(now, 15);
+  const packaged = {
+    async writeForPublication(opaqueId: string) {
+      return writeUploadedArtifactContent({
+        upload: input.upload,
+        contentStore: input.contentStore,
+        publicationId: opaqueId,
+      });
+    },
+  };
+  const baseInput = {
+    sourcePath: input.upload.localSourcePath,
+    publisherEmail: input.publisherEmail,
+    publicBaseUrl: input.publicBaseUrl,
+    metadataStore: input.metadataStore,
+    contentStore: input.contentStore,
+    stateStore: input.stateStore,
+    opaqueIdFactory: input.opaqueIdFactory,
+    forceNew: input.forceNew,
+    updatePublicationUrl: input.updatePublicationUrl,
+  } satisfies PublishArtifactInput;
+
+  const result = input.updatePublicationUrl
+    ? await updateExistingPublication({
+        ...baseInput,
+        localSourcePath: input.upload.localSourcePath,
+        opaqueId: opaqueIdFromPublicationUrl(input.updatePublicationUrl) ?? "",
+        packaged,
+        revisionWindowExpiresAt,
+        decision: "explicit-update",
+      })
+    : await publishUploadedArtifactByState({
+        ...baseInput,
+        localSourcePath: input.upload.localSourcePath,
+        packaged,
+        revisionWindowExpiresAt,
+        currentTime: now,
+      });
+  return {
+    ...result,
+    excludedArtifactPaths: input.upload.excludedArtifactPaths,
+  };
+}
+
 export async function publishSingleFileArtifactFromEnvironment(
   filePath: string,
   options: { publicBaseUrl?: string; env?: NodeJS.ProcessEnv } = {},
@@ -686,6 +825,49 @@ async function packageArtifactSource(
   };
 }
 
+async function publishUploadedArtifactByState(
+  input: PublishArtifactInput & {
+    localSourcePath: string;
+    packaged: {
+      writeForPublication: (opaqueId: string) => Promise<PackagedArtifact>;
+    };
+    revisionWindowExpiresAt: Date;
+    currentTime: Date;
+  },
+): Promise<PublishArtifactResult> {
+  const existingState = await input.stateStore.get(input.localSourcePath);
+  if (!input.forceNew && existingState) {
+    const publication = await input.metadataStore.getByOpaqueId(
+      existingState.opaqueId,
+    );
+    if (publication?.status === "active") {
+      if (
+        existingState.revisionWindowExpiresAt.getTime() >=
+        input.currentTime.getTime()
+      ) {
+        return updateExistingPublication({
+          ...input,
+          opaqueId: existingState.opaqueId,
+          decision: "updated",
+        });
+      }
+      return createFreshPublication({
+        ...input,
+        decision: "created-after-expiry",
+      });
+    }
+    return createFreshPublication({
+      ...input,
+      decision: "created-after-removed-local-state",
+    });
+  }
+
+  return createFreshPublication({
+    ...input,
+    decision: input.forceNew ? "forced-new" : "created",
+  });
+}
+
 async function createFreshPublication(
   input: PublishArtifactInput & {
     localSourcePath: string;
@@ -777,6 +959,65 @@ async function updateExistingPublication(
     revisionWindowExpiresAt: input.revisionWindowExpiresAt,
     decision: input.decision,
     artifactPaths: packaged.artifactPaths,
+  };
+}
+
+async function writeUploadedArtifactContent(input: {
+  upload: PreparedArtifactUpload;
+  contentStore: ArtifactContentStore;
+  publicationId: string;
+}): Promise<PackagedArtifact> {
+  const manifestRef = createManifestRef(
+    Buffer.concat(input.upload.files.map((file) => file.body)),
+  );
+  if (input.upload.kind === "single-file") {
+    const file = input.upload.files[0];
+    if (!file) throw new Error("Single-file Artifact upload had no file.");
+    const written = await input.contentStore.write({
+      publicationId: input.publicationId,
+      manifestRef,
+      artifactPath: singleFileEntryArtifactPath,
+      body: file.body,
+      contentType: file.contentType,
+    });
+    return {
+      manifestRef,
+      activeArtifactLocator: written.url,
+      artifactPaths: [singleFileEntryArtifactPath],
+      excludedArtifactPaths: input.upload.excludedArtifactPaths,
+    };
+  }
+
+  const manifest: DirectoryArtifactManifest = {
+    kind: directoryManifestKind,
+    entryArtifactPath: input.upload.entryArtifactPath,
+    files: {},
+  };
+  for (const file of input.upload.files) {
+    const written = await input.contentStore.write({
+      publicationId: input.publicationId,
+      manifestRef,
+      artifactPath: file.artifactPath,
+      body: file.body,
+      contentType: file.contentType,
+    });
+    manifest.files[file.artifactPath] = {
+      locator: written.url,
+      contentType: file.contentType,
+    };
+  }
+  const manifestWritten = await input.contentStore.write({
+    publicationId: input.publicationId,
+    manifestRef,
+    artifactPath: directoryManifestArtifactPath,
+    body: JSON.stringify(manifest),
+    contentType: directoryManifestContentType,
+  });
+  return {
+    manifestRef,
+    activeArtifactLocator: manifestWritten.url,
+    artifactPaths: Object.keys(manifest.files),
+    excludedArtifactPaths: input.upload.excludedArtifactPaths,
   };
 }
 
