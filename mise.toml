@@ -84,6 +84,16 @@ else
 fi
 '''
 
+[tasks.publish]
+description = "Lint, test, build, and publish to npm"
+run = '''
+set -euo pipefail
+pnpm run lint
+pnpm run test
+pnpm run build
+npm publish --access public "${@}"
+'''
+
 [tasks."secrets:check"]
 description = "Verify declared secrets resolve"
 run = "fnox check"
