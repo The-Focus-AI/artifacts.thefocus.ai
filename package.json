@@ -1,6 +1,6 @@
 {
-  "name": "@thefocus/artifacts",
-  "version": "1.0.0",
+  "name": "@the-focus-ai/artifacts",
+  "version": "1.0.1",
   "description": "CLI-first Artifact publishing service for TheFocus.AI",
   "type": "module",
   "main": "dist/src/index.js",

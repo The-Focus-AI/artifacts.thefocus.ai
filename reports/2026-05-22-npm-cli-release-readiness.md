@@ -2,13 +2,13 @@
 
 ## Abstract
 
-This report records the release-readiness checks for distributing the Artifacts CLI through npm as `@thefocus/artifacts` with an `artifacts` executable. The low-risk path is to publish only built CLI artifacts and documentation, use the existing pnpm/mise toolchain for repeatable builds, and prefer npm Trusted Publishing from GitHub Actions once the package is ready for automation.
+This report records the release-readiness checks for distributing the Artifacts CLI through npm as `@the-focus-ai/artifacts` with an `artifacts` executable. The low-risk path is to publish only built CLI artifacts and documentation, use the existing pnpm/mise toolchain for repeatable builds, and prefer npm Trusted Publishing from GitHub Actions once the package is ready for automation.
 
 ## Findings
 
 ### Package identity and publish surface
 
-The npm package needs a stable `name` and `version`; for this repo the PRD-selected package name is `@thefocus/artifacts`. The `bin` map should keep exposing `artifacts` so both `npx @thefocus/artifacts ...` and installed shell commands resolve to the built CLI entry point.
+The npm package needs a stable `name` and `version`; for this repo the PRD-selected package name is `@the-focus-ai/artifacts`. The `bin` map should keep exposing `artifacts` so both `npx @the-focus-ai/artifacts ...` and installed shell commands resolve to the built CLI entry point.
 
 The package should publish a narrow file set, not the whole Vercel app checkout. A `files` allowlist for `dist/src` and README content keeps local config, reports, tests, Vercel project files, and repository-only assets out of the tarball. `pnpm pack --dry-run` is the release verification command that shows the actual tarball contents before publishing.
 

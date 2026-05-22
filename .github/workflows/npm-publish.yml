@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish @thefocus/artifacts
+    name: Publish @the-focus-ai/artifacts
     runs-on: ubuntu-latest
     environment: npm
 
