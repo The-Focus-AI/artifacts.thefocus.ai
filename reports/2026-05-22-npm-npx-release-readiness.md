@@ -2,15 +2,15 @@
 
 ## Abstract
 
-This report summarizes current npm package publishing guidance relevant to releasing the Artifacts CLI as `@thefocus/artifacts` for `npx @thefocus/artifacts ...` usage. The safest implementation path is to make the package metadata match the ADR, constrain the packed tarball with an explicit `files` allowlist, build before packing/publishing, and document a repeatable publish path. Longer term, npm Trusted Publishing with OIDC and provenance is preferred over long-lived npm tokens.
+This report summarizes current npm package publishing guidance relevant to releasing the Artifacts CLI as `@the-focus-ai/artifacts` for `npx @the-focus-ai/artifacts ...` usage. The safest implementation path is to make the package metadata match the ADR, constrain the packed tarball with an explicit `files` allowlist, build before packing/publishing, and document a repeatable publish path. Longer term, npm Trusted Publishing with OIDC and provenance is preferred over long-lived npm tokens.
 
 ## Findings
 
 ### Package identity and entry points
 
-The npm package must have stable `name` and `version` fields; npm treats that pair as the unique published artifact identifier. The project ADR says the CLI should be distributed as `@thefocus/artifacts`, so `package.json` should use that package name rather than the deployment host name.
+The npm package must have stable `name` and `version` fields; npm treats that pair as the unique published artifact identifier. The project ADR says the CLI should be distributed as `@the-focus-ai/artifacts`, so `package.json` should use that package name rather than the deployment host name.
 
-For CLI use, npm supports a `bin` map. The existing `artifacts` executable is appropriate for `npx @thefocus/artifacts publish ...` as long as the built target is included in the package and starts with a Node shebang.
+For CLI use, npm supports a `bin` map. The existing `artifacts` executable is appropriate for `npx @the-focus-ai/artifacts publish ...` as long as the built target is included in the package and starts with a Node shebang.
 
 ### Tarball contents
 
@@ -26,7 +26,7 @@ npm Trusted Publishing allows CI/CD workflows to publish with OIDC instead of lo
 
 ## Recommendations for this issue
 
-1. Rename the package to `@thefocus/artifacts` to satisfy ADR 0003 and enable `npx @thefocus/artifacts`.
+1. Rename the package to `@the-focus-ai/artifacts` to satisfy ADR 0003 and enable `npx @the-focus-ai/artifacts`.
 2. Add package metadata needed for publication: description, repository, homepage, bugs, engines, publishConfig, and explicit `files`.
 3. Add a `prepack` script that builds the TypeScript output before packing.
 4. Add package metadata tests so regressions are caught before release.

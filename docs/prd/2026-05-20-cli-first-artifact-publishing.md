@@ -11,7 +11,7 @@ The primary workflow is: publish an Artifact locally, share the Publication URL 
 Build `artifacts.thefocus.ai` as a CLI-first publishing service for TheFocus.AI. A Publisher authenticates once with a verified `@thefocus.ai` email, receives a local Publisher Token, and then publishes with a simple command such as:
 
 ```bash
-npx @thefocus/artifacts publish ./dist
+npx @the-focus-ai/artifacts publish ./dist
 ```
 
 The command creates a Publication at a short opaque unlisted URL like:
@@ -88,7 +88,7 @@ The product surface is intentionally small: CLI management, static Publication v
 60. As an operator, I want Artifact contents in Vercel Blob, so that static bytes are stored in infrastructure that fits the Vercel deployment.
 61. As an operator, I want Publication metadata in Neon Postgres, so that Publication state, manifests, Publisher email, Revision Window state, and Removal state are queryable.
 62. As an operator, I want Publisher Tokens stored hashed server-side, so that a metadata leak does not immediately expose usable long-lived tokens.
-63. As a developer, I want the CLI distributed as `@thefocus/artifacts` with an `artifacts` executable, so that local publishing works from arbitrary projects through npm.
+63. As a developer, I want the CLI distributed as `@the-focus-ai/artifacts` with an `artifacts` executable, so that local publishing works from arbitrary projects through npm.
 
 ## Implementation Decisions
 
@@ -96,7 +96,7 @@ The product surface is intentionally small: CLI management, static Publication v
 - Use the glossary terms from `CONTEXT.md`: Artifact, Entry Page, Artifact Path, Publication, Unlisted, Publisher, Publisher Token, Revision Window, Removal, and Local Source.
 - Deploy on Vercel and store Artifact contents in Vercel Blob, per ADR 0001.
 - Store Publication metadata in Neon Postgres, per ADR 0002.
-- Distribute the CLI as the npm package `@thefocus/artifacts` with an `artifacts` executable, per ADR 0003.
+- Distribute the CLI as the npm package `@the-focus-ai/artifacts` with an `artifacts` executable, per ADR 0003.
 - Use short opaque Publication URLs under `https://artifacts.thefocus.ai/a/{opaque}`. Product and CLI language should refer to the full Publication URL, not a token.
 - Use same-origin serving for landing page, API, and Publications to keep v1 simple. Because Artifact JavaScript can run on the same origin, v1 must avoid long-lived authenticated browser dashboard/session state on that origin.
 - The root page is super minimal, TheFocus.AI-branded, links to the main TheFocus.AI site, and exposes no public Publication listing.

@@ -2,10 +2,10 @@
 
 CLI-first Artifact publishing for TheFocus.AI.
 
-The CLI is packaged as `@thefocus/artifacts` and exposes the `artifacts` executable:
+The CLI is packaged as `@the-focus-ai/artifacts` and exposes the `artifacts` executable:
 
 ```bash
-npx @thefocus/artifacts publish ./dist
+npx @the-focus-ai/artifacts publish ./dist
 ```
 
 ## Development
@@ -30,7 +30,7 @@ See [docs/deploy.md](docs/deploy.md) for Vercel project, custom domain, pull-req
 Install/run the CLI through npm or the repo-local script:
 
 ```bash
-npx @thefocus/artifacts publish ./artifact.html
+npx @the-focus-ai/artifacts publish ./artifact.html
 pnpm artifacts publish ./artifact.html
 ```
 

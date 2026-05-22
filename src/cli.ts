@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
@@ -269,7 +270,7 @@ function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
 }
 
 const isDirectRun = process.argv[1]
-  ? fileURLToPath(import.meta.url) === process.argv[1]
+  ? fileURLToPath(import.meta.url) === realpathSync(process.argv[1])
   : false;
 
 if (isDirectRun) {

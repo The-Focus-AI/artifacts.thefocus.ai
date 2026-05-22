@@ -21,7 +21,7 @@ describe("npm package metadata", () => {
   it("publishes under the documented scoped package name for npx", async () => {
     const packageJson = await readPackageJson();
 
-    expect(packageJson.name).toBe("@thefocus/artifacts");
+    expect(packageJson.name).toBe("@the-focus-ai/artifacts");
     expect(packageJson.bin).toEqual({ artifacts: "dist/src/cli.js" });
     expect(packageJson.publishConfig).toMatchObject({ access: "public" });
   });
