@@ -78,24 +78,26 @@ vercel env ls --scope thefocusai
 
 ## Production deploy
 
-Deploy production from the branch to validate the app manually:
+Production code deploys are triggered by GitHub/Vercel from `main`:
 
 ```bash
 mise run lint
 mise run test
 mise run deploy
-vercel deploy --prod --yes --scope thefocusai
+git push origin main
 ```
+
+Do not run `vercel deploy` for code changes. Use direct Vercel CLI commands only for environment variable updates or one-time project configuration.
 
 ## Live smoke test
 
-After deploying and confirming env vars are present:
+After deploying and confirming env vars are present, follow the full flow in [Smoke test](smoke-test.md). For a quick publish/view check:
 
 ```bash
 echo '<!doctype html><h1>Smoke</h1>' > /tmp/artifact-smoke.html
 pnpm run build
 ARTIFACTS_PUBLIC_BASE_URL=https://artifacts.thefocus.ai \
-ARTIFACTS_PUBLISHER_EMAIL=you@thefocus.ai \
+THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
 fnox exec -- node dist/src/cli.js publish /tmp/artifact-smoke.html
 ```
 
@@ -122,6 +124,6 @@ Once a Preview URL exists, use that URL as `ARTIFACTS_PUBLIC_BASE_URL` for a smo
 
 ```bash
 ARTIFACTS_PUBLIC_BASE_URL=https://<preview-deployment>.vercel.app \
-ARTIFACTS_PUBLISHER_EMAIL=you@thefocus.ai \
+THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
 fnox exec -- node dist/src/cli.js publish /tmp/artifact-smoke.html
 ```
