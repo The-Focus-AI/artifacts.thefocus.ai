@@ -60,6 +60,16 @@ export async function runCli(
   const configDir = dependencies.configDir ?? defaultConfigDir(env);
 
   try {
+    if (
+      !command ||
+      command === "help" ||
+      command === "--help" ||
+      command === "-h"
+    ) {
+      printUsage(stdout);
+      return 0;
+    }
+
     if (command === "publish" && firstArg) {
       const result = await publishArtifactFromEnvironment(firstArg, {
         publicBaseUrl: options["base-url"],
@@ -246,8 +256,8 @@ async function confirmRemoval(
   }
 }
 
-function printUsage(stderr: Pick<NodeJS.WriteStream, "write">): void {
-  stderr.write(
+function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
+  output.write(
     "Usage: artifacts <login|logout|whoami|publish|remove|list>\n" +
       "  artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
       "  artifacts publish <file.html|directory> [--entry-page index.html] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose]\n" +
