@@ -2,8 +2,9 @@ name: Publish npm package
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*.*.*"
 
 permissions:
   contents: read
@@ -31,6 +32,22 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Validate tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+          const expectedTag = `v${packageJson.version}`;
+          const actualTag = process.env.GITHUB_REF_NAME;
+
+          if (actualTag !== expectedTag) {
+            console.error(`Tag ${actualTag} does not match package.json version ${packageJson.version}. Expected ${expectedTag}.`);
+            process.exit(1);
+          }
+          NODE
 
       - name: Lint
         run: pnpm run lint

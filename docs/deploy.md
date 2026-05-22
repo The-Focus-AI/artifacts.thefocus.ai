@@ -106,6 +106,15 @@ Inspect the dry-run output. It should contain built files under `dist/src/`, `RE
 
 Preferred release path is the `Publish npm package` GitHub Actions workflow using npm Trusted Publishing with provenance. Before the first workflow publish, configure npm so package `@thefocus/artifacts` trusts this repository/workflow (`.github/workflows/npm-publish.yml`) and make sure the GitHub `npm` environment has the intended reviewers.
 
+To publish through GitHub, update `package.json` to the intended version, merge that commit to `main`, then push a matching `vX.Y.Z` tag. The workflow refuses to publish if the pushed tag does not match `package.json` exactly:
+
+```bash
+git checkout main
+git pull --ff-only
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 If Trusted Publishing is not configured yet, a human maintainer with npm publish rights can publish from a clean checkout with a short-lived or granular npm token:
 
 ```bash
