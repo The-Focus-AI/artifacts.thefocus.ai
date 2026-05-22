@@ -4,6 +4,13 @@
   "description": "CLI-first Artifact publishing service for TheFocus.AI",
   "type": "module",
   "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
   "bin": {
     "artifacts": "dist/src/cli.js"
   },
@@ -11,6 +18,20 @@
     "dist/src",
     "README.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/The-Focus-AI/artifacts.thefocus.ai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/The-Focus-AI/artifacts.thefocus.ai/issues"
+  },
+  "homepage": "https://artifacts.thefocus.ai",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "artifacts": "tsx src/cli.ts",
     "build": "tsc -p tsconfig.json",
