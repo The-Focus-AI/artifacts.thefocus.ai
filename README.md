@@ -2,6 +2,12 @@
 
 CLI-first Artifact publishing for TheFocus.AI.
 
+The CLI is packaged as `@thefocus/artifacts` and exposes the `artifacts` executable:
+
+```bash
+npx @thefocus/artifacts publish ./dist
+```
+
 ## Development
 
 This repo uses mise and pnpm:
