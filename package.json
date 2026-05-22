@@ -1,5 +1,5 @@
 {
-  "name": "artifacts.thefocus.ai",
+  "name": "@thefocus/artifacts",
   "version": "1.0.0",
   "description": "CLI-first Artifact publishing service for TheFocus.AI",
   "type": "module",
@@ -7,9 +7,14 @@
   "bin": {
     "artifacts": "dist/src/cli.js"
   },
+  "files": [
+    "dist/src",
+    "README.md"
+  ],
   "scripts": {
     "artifacts": "tsx src/cli.ts",
     "build": "tsc -p tsconfig.json",
+    "prepack": "pnpm run build",
     "lint": "prettier --check package.json tsconfig.json vitest.config.ts vercel.json 'src/**/*.ts' 'api/**/*.ts' 'tests/**/*.ts' README.md 'docs/**/*.md' 'public/**/*.html' && tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:storage:live": "node -e \"for (const name of ['DATABASE_URL','BLOB_READ_WRITE_TOKEN']) if (!process.env[name]) { console.error(name + ' is required for live storage tests'); process.exit(1) }\" && vitest run tests/storage-live.test.ts --reporter verbose",
