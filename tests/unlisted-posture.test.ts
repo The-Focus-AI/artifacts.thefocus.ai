@@ -39,6 +39,10 @@ describe("minimal landing page", () => {
       destination: "/api/a/:opaque",
     });
     expect(vercelConfig.rewrites).toContainEqual({
+      source: "/a/:opaque/",
+      destination: "/api/a/:opaque",
+    });
+    expect(vercelConfig.rewrites).toContainEqual({
       source: "/a/:opaque/:path*",
       destination: "/api/a/:opaque?path=:path*",
     });
