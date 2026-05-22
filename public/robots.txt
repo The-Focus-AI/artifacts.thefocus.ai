@@ -1,2 +1,22 @@
 User-agent: *
+Content-Signal: ai-train=no, search=yes, ai-input=no
 Disallow: /a/
+Allow: /
+
+User-agent: GPTBot
+Disallow: /a/
+Allow: /
+
+User-agent: ClaudeBot
+Disallow: /a/
+Allow: /
+
+User-agent: PerplexityBot
+Disallow: /a/
+Allow: /
+
+User-agent: OAI-SearchBot
+Disallow: /a/
+Allow: /
+
+Sitemap: https://artifacts.thefocus.ai/sitemap.xml

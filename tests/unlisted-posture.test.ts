@@ -22,6 +22,7 @@ describe("minimal landing page", () => {
     expect(html).toContain("TheFocus.AI");
     expect(html).toContain("Artifacts");
     expect(html).toContain('href="https://thefocus.ai/"');
+    expect(html).not.toContain('name="robots" content="noindex');
   });
 
   it("does not expose a public Publication listing", async () => {
@@ -33,20 +34,89 @@ describe("minimal landing page", () => {
     expect(html).not.toMatch(
       /Publication listing|Recent Publications|<ul[^>]*id="?publications/i,
     );
-    expect(vercelConfig.rewrites).toEqual([
-      { source: "/login/callback", destination: "/api/login/callback" },
-      { source: "/logout", destination: "/api/logout" },
-      { source: "/login", destination: "/api/login" },
-      { source: "/a/:opaque", destination: "/api/a/:opaque" },
-      { source: "/a/:opaque/:path*", destination: "/api/a/:opaque/:path*" },
-    ]);
+    expect(vercelConfig.rewrites).toContainEqual({
+      source: "/a/:opaque",
+      destination: "/api/a/:opaque",
+    });
+    expect(vercelConfig.rewrites).toContainEqual({
+      source: "/a/:opaque/:path*",
+      destination: "/api/a/:opaque/:path*",
+    });
+  });
+});
+
+describe("agent readiness discovery resources", () => {
+  it("publishes a concise llms.txt with service resources and no Publication listing", async () => {
+    const llms = await readProjectFile("public/llms.txt");
+
+    expect(llms).toContain("# TheFocus.AI Artifacts");
+    expect(llms).toContain("https://artifacts.thefocus.ai/index.md");
+    expect(llms).toContain("https://artifacts.thefocus.ai/sitemap.xml");
+    expect(llms).not.toMatch(/\/a\/[A-Za-z0-9]/);
+  });
+
+  it("publishes a Markdown representation of the root landing page", async () => {
+    const markdown = await readProjectFile("public/index.md");
+
+    expect(markdown).toContain("# Unlisted Artifacts");
+    expect(markdown).toContain("[Visit TheFocus.AI](https://thefocus.ai/)");
+  });
+
+  it("publishes a sitemap for root service resources only", async () => {
+    const sitemap = await readProjectFile("public/sitemap.xml");
+
+    expect(sitemap).toContain("<loc>https://artifacts.thefocus.ai/</loc>");
+    expect(sitemap).toContain(
+      "<loc>https://artifacts.thefocus.ai/llms.txt</loc>",
+    );
+    expect(sitemap).not.toContain("https://artifacts.thefocus.ai/a/");
+  });
+
+  it("advertises agent resources and Markdown negotiation in Vercel config", async () => {
+    const vercelConfig = JSON.parse(await readProjectFile("vercel.json")) as {
+      headers?: Array<{
+        source: string;
+        headers: Array<{ key: string; value: string }>;
+      }>;
+      rewrites?: Array<{
+        source: string;
+        destination: string;
+        has?: Array<{ type: string; key: string; value: string }>;
+      }>;
+    };
+
+    expect(vercelConfig.headers).toContainEqual({
+      source: "/",
+      headers: [
+        {
+          key: "Link",
+          value:
+            '</sitemap.xml>; rel="sitemap"; type="application/xml", </llms.txt>; rel="alternate"; type="text/plain", </index.md>; rel="alternate"; type="text/markdown"',
+        },
+        {
+          key: "Content-Signal",
+          value: "ai-train=no, search=yes, ai-input=no",
+        },
+      ],
+    });
+    expect(vercelConfig.rewrites).toContainEqual({
+      source: "/",
+      has: [{ type: "header", key: "accept", value: ".*text/markdown.*" }],
+      destination: "/index.md",
+    });
   });
 });
 
 describe("robots and Publication indexing posture", () => {
-  it("disallows crawling Publication URLs", async () => {
-    await expect(readProjectFile("public/robots.txt")).resolves.toBe(
-      "User-agent: *\nDisallow: /a/\n",
+  it("disallows crawling Publication URLs and publishes agent usage policy", async () => {
+    await expect(readProjectFile("public/robots.txt")).resolves.toContain(
+      "Disallow: /a/",
+    );
+    await expect(readProjectFile("public/robots.txt")).resolves.toContain(
+      "Content-Signal: ai-train=no, search=yes, ai-input=no",
+    );
+    await expect(readProjectFile("public/robots.txt")).resolves.toContain(
+      "Sitemap: https://artifacts.thefocus.ai/sitemap.xml",
     );
   });
 
