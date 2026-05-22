@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { realpathSync } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +13,7 @@ import {
 import {
   clearLocalPublisherConfig,
   defaultConfigDir,
+  FilePublicationStateStore,
   resolvePublisherToken,
   writeLocalPublisherConfig,
 } from "./local-config.js";
@@ -19,12 +21,14 @@ import type { BrowserLoginResult } from "./login-flow.js";
 import { loginWithBrowserFlow } from "./login-flow.js";
 import {
   absolutePublicationUrl,
+  defaultPublicBaseUrl,
   publishArtifactFromEnvironment,
   publishArtifactSummary,
   removePublicationFromEnvironment,
   removePublicationSummary,
   type RemovePublicationResult,
 } from "./publication.js";
+import { HttpArtifactApiClient, type ArtifactApiClient } from "./remote-api.js";
 import {
   createNeonPublicationMetadataStore,
   type PublicationMetadataStore,
@@ -36,6 +40,7 @@ export interface CliDependencies {
   stderr?: Pick<NodeJS.WriteStream, "write">;
   tokenStore?: PublisherTokenStore;
   metadataStore?: PublicationMetadataStore;
+  apiClient?: ArtifactApiClient;
   configDir?: string;
   openBrowser?: (url: string) => Promise<void>;
   stdin?: NodeJS.ReadStream;
@@ -72,14 +77,32 @@ export async function runCli(
     }
 
     if (command === "publish" && firstArg) {
-      const result = await publishArtifactFromEnvironment(firstArg, {
-        publicBaseUrl: options["base-url"],
-        entryPage: options["entry-page"],
-        env,
-        configDir,
-        forceNew: Object.hasOwn(options, "new"),
-        updatePublicationUrl: options.update,
-      });
+      const token = await resolvePublisherToken({ env, configDir });
+      if (!token.token) throw new Error("A valid Publisher Token is required");
+      const result = dependencies.apiClient
+        ? await dependencies.apiClient.publish(token.token, firstArg, {
+            publicBaseUrl: options["base-url"],
+            entryPage: options["entry-page"],
+            forceNew: Object.hasOwn(options, "new"),
+            updatePublicationUrl: options.update,
+          })
+        : dependencies.tokenStore || dependencies.metadataStore
+          ? await publishArtifactFromEnvironment(firstArg, {
+              publicBaseUrl: options["base-url"],
+              entryPage: options["entry-page"],
+              env,
+              configDir,
+              forceNew: Object.hasOwn(options, "new"),
+              updatePublicationUrl: options.update,
+            })
+          : await publishWithDefaultApiClient(firstArg, token.token, {
+              env,
+              configDir,
+              publicBaseUrl: options["base-url"],
+              entryPage: options["entry-page"],
+              forceNew: Object.hasOwn(options, "new"),
+              updatePublicationUrl: options.update,
+            });
       stdout.write(
         `${publishArtifactSummary(result, { verbose: options.verbose === "true" })}\n`,
       );
@@ -104,11 +127,31 @@ export async function runCli(
       }
       const remove =
         dependencies.removePublication ??
-        ((publicationUrl: string) =>
-          removePublicationFromEnvironment(publicationUrl, {
-            env,
-            configDir,
-          }));
+        (dependencies.apiClient
+          ? async (publicationUrl: string) => {
+              const token = await resolvePublisherToken({ env, configDir });
+              if (!token.token)
+                throw new Error("A valid Publisher Token is required");
+              return dependencies.apiClient!.remove(
+                token.token,
+                publicationUrl,
+              );
+            }
+          : dependencies.tokenStore || dependencies.metadataStore
+            ? (publicationUrl: string) =>
+                removePublicationFromEnvironment(publicationUrl, {
+                  env,
+                  configDir,
+                })
+            : async (publicationUrl: string) => {
+                const token = await resolvePublisherToken({ env, configDir });
+                if (!token.token)
+                  throw new Error("A valid Publisher Token is required");
+                return defaultApiClient(env).remove(
+                  token.token,
+                  publicationUrl,
+                );
+              });
       const result = await remove(firstArg);
       stdout.write(`${removePublicationSummary(result)}\n`);
       return 0;
@@ -152,10 +195,14 @@ export async function runCli(
     if (command === "whoami") {
       const token = await resolvePublisherToken({ env, configDir });
       if (!token.token) throw new Error("Not logged in");
-      const email = await authenticatePublisherToken({
-        token: token.token,
-        store: dependencies.tokenStore ?? createNeonPublisherTokenStore(),
-      });
+      const email = dependencies.tokenStore
+        ? await authenticatePublisherToken({
+            token: token.token,
+            store: dependencies.tokenStore,
+          })
+        : await (dependencies.apiClient ?? defaultApiClient(env)).whoami(
+            token.token,
+          );
       stdout.write(`${email}\n`);
       return 0;
     }
@@ -163,13 +210,19 @@ export async function runCli(
     if (command === "list") {
       const token = await resolvePublisherToken({ env, configDir });
       if (!token.token) throw new Error("A valid Publisher Token is required");
-      const publisherEmail = await authenticatePublisherToken({
-        token: token.token,
-        store: dependencies.tokenStore ?? createNeonPublisherTokenStore(),
-      });
-      const publications = await (
-        dependencies.metadataStore ?? createNeonPublicationMetadataStore()
-      ).listByPublisherEmail(publisherEmail);
+      const publications = dependencies.metadataStore
+        ? await (async () => {
+            const publisherEmail = await authenticatePublisherToken({
+              token: token.token,
+              store: dependencies.tokenStore ?? createNeonPublisherTokenStore(),
+            });
+            return dependencies.metadataStore!.listByPublisherEmail(
+              publisherEmail,
+            );
+          })()
+        : await (dependencies.apiClient ?? defaultApiClient(env)).list(
+            token.token,
+          );
       stdout.write(
         `${formatPublicationList(publications, {
           publicBaseUrl:
@@ -187,6 +240,56 @@ export async function runCli(
     stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
   }
+}
+
+async function publishWithDefaultApiClient(
+  sourcePath: string,
+  token: string,
+  options: {
+    env: NodeJS.ProcessEnv;
+    configDir: string;
+    publicBaseUrl?: string;
+    entryPage?: string;
+    forceNew?: boolean;
+    updatePublicationUrl?: string;
+  },
+) {
+  const stateStore = new FilePublicationStateStore(options.configDir);
+  const localSourcePath = await realpath(sourcePath);
+  const existingState = await stateStore.get(localSourcePath);
+  const now = new Date();
+  const shouldUpdateExisting =
+    !options.forceNew &&
+    existingState !== null &&
+    existingState.revisionWindowExpiresAt.getTime() >= now.getTime();
+  const updatePublicationUrl =
+    options.updatePublicationUrl ??
+    (shouldUpdateExisting ? existingState.publicationUrl : undefined);
+  const result = await defaultApiClient(
+    options.env,
+    options.publicBaseUrl,
+  ).publish(token, sourcePath, {
+    publicBaseUrl: options.publicBaseUrl,
+    entryPage: options.entryPage,
+    forceNew: options.forceNew,
+    updatePublicationUrl,
+  });
+  await stateStore.set({
+    localSourcePath,
+    opaqueId: result.opaqueId,
+    publicationUrl: result.publicationUrl,
+    revisionWindowExpiresAt: result.revisionWindowExpiresAt,
+  });
+  return result;
+}
+
+function defaultApiClient(
+  env: NodeJS.ProcessEnv,
+  explicitBaseUrl?: string,
+): HttpArtifactApiClient {
+  return new HttpArtifactApiClient(
+    explicitBaseUrl ?? env.ARTIFACTS_PUBLIC_BASE_URL ?? defaultPublicBaseUrl,
+  );
 }
 
 function parseFlags(flags: string[]): Record<string, string | undefined> {
