@@ -147,7 +147,7 @@ export async function runCli(
                 const token = await resolvePublisherToken({ env, configDir });
                 if (!token.token)
                   throw new Error("A valid Publisher Token is required");
-                return defaultApiClient(env).remove(
+                return defaultApiClient(env, options["base-url"]).remove(
                   token.token,
                   publicationUrl,
                 );
@@ -200,9 +200,9 @@ export async function runCli(
             token: token.token,
             store: dependencies.tokenStore,
           })
-        : await (dependencies.apiClient ?? defaultApiClient(env)).whoami(
-            token.token,
-          );
+        : await (
+            dependencies.apiClient ?? defaultApiClient(env, options["base-url"])
+          ).whoami(token.token);
       stdout.write(`${email}\n`);
       return 0;
     }
@@ -220,9 +220,9 @@ export async function runCli(
               publisherEmail,
             );
           })()
-        : await (dependencies.apiClient ?? defaultApiClient(env)).list(
-            token.token,
-          );
+        : await (
+            dependencies.apiClient ?? defaultApiClient(env, options["base-url"])
+          ).list(token.token);
       stdout.write(
         `${formatPublicationList(publications, {
           publicBaseUrl:
@@ -365,9 +365,9 @@ function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
     "Usage: artifacts <login|logout|whoami|publish|remove|list>\n" +
       "  artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
       "  artifacts publish <file.html|directory> [--entry-page index.html] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose]\n" +
-      "  artifacts remove <Publication URL> [--yes]\n" +
+      "  artifacts remove <Publication URL> [--yes] [--base-url https://artifacts.thefocus.ai]\n" +
       "  artifacts list [--base-url https://artifacts.thefocus.ai]\n" +
-      "  artifacts whoami\n" +
+      "  artifacts whoami [--base-url https://artifacts.thefocus.ai]\n" +
       "  artifacts logout\n",
   );
 }
