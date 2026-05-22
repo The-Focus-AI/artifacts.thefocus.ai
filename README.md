@@ -23,9 +23,24 @@ mise run test
 
 See [docs/development.md](docs/development.md) for the Neon/Postgres and Vercel Blob environment contract, migration setup, and local fake adapter notes.
 
-See [docs/deploy.md](docs/deploy.md) for Vercel project, custom domain, pull-request Preview deployment, and live smoke-test instructions.
+See [docs/deploy.md](docs/deploy.md) for Vercel project, custom domain, pull-request Preview deployment, and environment configuration. See [docs/smoke-test.md](docs/smoke-test.md) for the integrated smoke flow and [docs/release.md](docs/release.md) for npm release steps.
 
 ## Publishing Artifacts
+
+Install/run the CLI through npm or the repo-local script:
+
+```bash
+npx @thefocus/artifacts publish ./artifact.html
+pnpm artifacts publish ./artifact.html
+```
+
+Log in once with a browser, or store a pre-issued Publisher Token non-interactively:
+
+```bash
+pnpm artifacts login
+pnpm artifacts login --token tfai_pub_...
+pnpm artifacts whoami
+```
 
 The publishing path accepts one local HTML file or one local directory and returns a canonical unlisted Publication URL:
 
@@ -52,7 +67,16 @@ THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
 fnox exec -- pnpm artifacts publish ./dist
 ```
 
-Use `--entry-page path/to/page.html` to choose a different HTML Entry Page inside a directory Artifact.
+Use `--entry-page path/to/page.html` to choose a different HTML Entry Page inside a directory Artifact. Use `--new` to force a fresh Publication during the Revision Window, or `--update <Publication URL>` to intentionally update an older active Publication URL.
+
+Other CLI management commands:
+
+```bash
+pnpm artifacts list
+pnpm artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ
+pnpm artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ --yes
+pnpm artifacts logout
+```
 
 Packaging applies built-in safety rules before upload: obvious secret, dependency, cache, and hidden paths are excluded by default, except `.well-known/`; `.gitignore` is not read in v1; symlinks are rejected; and preflight fails before upload if any file exceeds 25 MB, total Artifact size exceeds 100 MB, or the Artifact has more than 1,000 files. Exclusion output is concise by default; add `--verbose` to print excluded paths.
 
