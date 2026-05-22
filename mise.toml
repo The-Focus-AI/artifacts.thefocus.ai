@@ -34,6 +34,12 @@ run = '''
 set -euo pipefail
 if [ -f package.json ]; then
   pnpm install --frozen-lockfile || pnpm install
+  mkdir -p node_modules/.bin
+  cat > node_modules/.bin/artifacts <<'SH'
+#!/usr/bin/env sh
+exec pnpm exec tsx src/cli.ts "$@"
+SH
+  chmod +x node_modules/.bin/artifacts
 fi
 npx skills experimental_install
 '''
