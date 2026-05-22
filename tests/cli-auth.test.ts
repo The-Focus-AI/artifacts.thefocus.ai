@@ -26,6 +26,20 @@ function streamCapture() {
 }
 
 describe("CLI Publisher Token commands", () => {
+  it("prints help successfully for npx smoke verification", async () => {
+    const stdout = streamCapture();
+    const stderr = streamCapture();
+
+    const exitCode = await runCli(["--help"], {
+      stdout: stdout.stream,
+      stderr: stderr.stream,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout.text()).toContain("Usage: artifacts");
+    expect(stderr.text()).toBe("");
+  });
+
   it("completes browser login flow and stores the token automatically", async () => {
     const configDir = await mkdtemp(join(tmpdir(), "artifacts-cli-"));
     const stdout = streamCapture();

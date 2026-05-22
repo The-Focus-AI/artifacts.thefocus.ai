@@ -78,14 +78,48 @@ vercel env ls --scope thefocusai
 
 ## Production deploy
 
-Deploy production from the branch to validate the app manually:
+Production code deploys should go through GitHub/Vercel integration. Validate locally, merge to `main`, then push to GitHub and let Vercel auto-deploy:
 
 ```bash
 mise run lint
 mise run test
 mise run deploy
-vercel deploy --prod --yes --scope thefocusai
+git push origin main
 ```
+
+Only use direct `vercel deploy` commands when updating Vercel environment variables or debugging with explicit operator approval.
+
+## npm/npx package release
+
+The CLI package is published as `@thefocus/artifacts`, exposing the `artifacts` executable for `npx @thefocus/artifacts ...`.
+
+Before publishing:
+
+```bash
+mise run lint
+mise run test
+mise run deploy
+pnpm pack --dry-run
+```
+
+Inspect the dry-run output. It should contain built files under `dist/src/`, `README.md`, and package metadata only; it should not contain source tests, reports, `.fnox`, or local configuration.
+
+Preferred release path is the `Publish npm package` GitHub Actions workflow using npm Trusted Publishing with provenance. Before the first workflow publish, configure npm so package `@thefocus/artifacts` trusts this repository/workflow (`.github/workflows/npm-publish.yml`) and make sure the GitHub `npm` environment has the intended reviewers.
+
+If Trusted Publishing is not configured yet, a human maintainer with npm publish rights can publish from a clean checkout with a short-lived or granular npm token:
+
+```bash
+npm publish --access public --provenance
+```
+
+After publishing, verify `npx` resolves the package and prints CLI usage:
+
+```bash
+npx @thefocus/artifacts --help
+npx @thefocus/artifacts whoami
+```
+
+`whoami` should either print the active Publisher email when configured or fail with `Not logged in`; either result confirms the executable starts correctly.
 
 ## Live smoke test
 
