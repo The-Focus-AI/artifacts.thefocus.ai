@@ -2,6 +2,8 @@
 
 CLI-first Artifact publishing for TheFocus.AI.
 
+Artifacts is a dynamic publishing skill for AI agents that create HTML reports, prototypes, mockups, visualizations, and static bundles. It gives those agent-created files a stable unlisted Publication URL that can be shared with clients or collaborators.
+
 The CLI is packaged as `@the-focus-ai/artifacts` and exposes the `artifacts` executable:
 
 ```bash
@@ -27,6 +29,8 @@ See [docs/deploy.md](docs/deploy.md) for Vercel project, custom domain, pull-req
 
 ## Publishing Artifacts
 
+Use Artifacts when an agent has produced a local HTML file or static directory and needs to return a URL instead of attaching files or asking a human to set up hosting.
+
 Install/run the CLI through npm or the repo-local script:
 
 ```bash
@@ -42,7 +46,7 @@ pnpm artifacts login --token tfai_pub_...
 pnpm artifacts whoami
 ```
 
-The publishing path accepts one local HTML file or one local directory and returns a canonical unlisted Publication URL:
+The publishing path accepts one local HTML file or one local directory and returns a canonical unlisted Publication URL. In agent workflows, publish the generated Artifact and include the printed URL in the final response:
 
 ```bash
 THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \

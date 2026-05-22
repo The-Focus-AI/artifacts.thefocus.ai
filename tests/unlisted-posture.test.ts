@@ -50,16 +50,24 @@ describe("agent readiness discovery resources", () => {
     const llms = await readProjectFile("public/llms.txt");
 
     expect(llms).toContain("# TheFocus.AI Artifacts");
+    expect(llms).toContain("Dynamic publishing skill for AI agents");
+    expect(llms).toContain(
+      "npx @the-focus-ai/artifacts publish ./artifact.html",
+    );
     expect(llms).toContain("https://artifacts.thefocus.ai/index.md");
     expect(llms).toContain("https://artifacts.thefocus.ai/sitemap.xml");
-    expect(llms).not.toMatch(/\/a\/[A-Za-z0-9]/);
+    expect(llms).not.toMatch(
+      /https:\/\/artifacts\.thefocus\.ai\/a\/[A-Za-z0-9]{9,}/,
+    );
   });
 
   it("publishes a Markdown representation of the root landing page", async () => {
     const markdown = await readProjectFile("public/index.md");
 
-    expect(markdown).toContain("# Unlisted Artifacts");
-    expect(markdown).toContain("[Visit TheFocus.AI](https://thefocus.ai/)");
+    expect(markdown).toContain("# Publish agent-created HTML");
+    expect(markdown).toContain(
+      "npx @the-focus-ai/artifacts publish ./artifact.html",
+    );
   });
 
   it("publishes a sitemap for root service resources only", async () => {
@@ -95,7 +103,7 @@ describe("agent readiness discovery resources", () => {
         },
         {
           key: "Content-Signal",
-          value: "ai-train=no, search=yes, ai-input=no",
+          value: "ai-train=no, search=yes, ai-input=yes",
         },
       ],
     });
@@ -113,7 +121,7 @@ describe("robots and Publication indexing posture", () => {
       "Disallow: /a/",
     );
     await expect(readProjectFile("public/robots.txt")).resolves.toContain(
-      "Content-Signal: ai-train=no, search=yes, ai-input=no",
+      "Content-Signal: ai-train=no, search=yes, ai-input=yes",
     );
     await expect(readProjectFile("public/robots.txt")).resolves.toContain(
       "Sitemap: https://artifacts.thefocus.ai/sitemap.xml",

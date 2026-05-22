@@ -22,7 +22,7 @@ https://artifacts.thefocus.ai/a/Ab3xY9kQ
 
 Anyone with the Publication URL can view the Artifact without logging in. Only authenticated TheFocus.AI Publishers can create, update, list, or remove Publications. A rolling 15-minute Revision Window allows repeated publishes from the same Local Source to update the same Publication URL for immediate hotfixes. After the Revision Window expires, publishing from that Local Source creates a new Publication unless the Publisher explicitly updates an existing Publication URL.
 
-The product surface is intentionally small: CLI management, static Publication viewing, publishing API routes, one-time browser login for CLI token issuance, and a super-minimal TheFocus.AI landing page linking to the main site. There is no web dashboard in v1.
+The product surface is intentionally small: CLI management, static Publication viewing, publishing API routes, one-time browser login for CLI token issuance, and a focused TheFocus.AI landing page that explains Artifacts as a dynamic publishing skill for agent-created HTML. There is no web dashboard in v1.
 
 ## User Stories
 
@@ -99,7 +99,7 @@ The product surface is intentionally small: CLI management, static Publication v
 - Distribute the CLI as the npm package `@the-focus-ai/artifacts` with an `artifacts` executable, per ADR 0003.
 - Use short opaque Publication URLs under `https://artifacts.thefocus.ai/a/{opaque}`. Product and CLI language should refer to the full Publication URL, not a token.
 - Use same-origin serving for landing page, API, and Publications to keep v1 simple. Because Artifact JavaScript can run on the same origin, v1 must avoid long-lived authenticated browser dashboard/session state on that origin.
-- The root page is super minimal, TheFocus.AI-branded, links to the main TheFocus.AI site, and exposes no public Publication listing.
+- The root page is focused, TheFocus.AI-branded, links to the main TheFocus.AI site, explains the agent-created HTML publishing workflow, links to `/llms.txt` and `/index.md`, and exposes no public Publication listing.
 - Viewer access is unlisted and unauthenticated. Anyone with a Publication URL can view the active Artifact.
 - Publisher access requires one-time browser login with a verified email exactly ending in `@thefocus.ai`. Non-matching emails are rejected and receive no Publisher Token.
 - The API verifies email domain when issuing a Publisher Token. Later API requests trust valid Publisher Tokens.
