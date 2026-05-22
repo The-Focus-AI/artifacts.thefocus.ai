@@ -91,7 +91,7 @@ set -euo pipefail
 pnpm run lint
 pnpm run test
 pnpm run build
-npm publish --access public "${@}"
+npm publish --access public
 '''
 
 [tasks."secrets:check"]
