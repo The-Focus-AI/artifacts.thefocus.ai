@@ -29,10 +29,10 @@ git push origin v1.0.0
 If Trusted Publishing is not configured yet, a human maintainer with npm publish rights can publish from a clean checkout with a short-lived or granular npm token:
 
 ```bash
-npm publish --access public --provenance
+npm publish --access public
 ```
 
-If a manual token is ever needed, keep it in 1Password/fnox or npm's local auth store; never commit it.
+Do not pass `--provenance` for a local publish. npm automatic provenance generation only works from supported CI providers such as GitHub Actions; local shells fail with `Automatic provenance generation not supported for provider: null`. If a manual token is ever needed, keep it in 1Password/fnox or npm's local auth store; never commit it.
 
 After publishing, verify `npx` resolves the package and prints CLI usage:
 
