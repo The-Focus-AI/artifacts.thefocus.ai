@@ -10,6 +10,7 @@ import {
 } from "../src/auth.js";
 import { configFilePath } from "../src/local-config.js";
 import { runCli } from "../src/cli.js";
+import { InMemoryPublicationMetadataStore } from "../src/storage/publication-metadata.js";
 
 function streamCapture() {
   let text = "";
@@ -111,6 +112,78 @@ describe("CLI Publisher Token commands", () => {
 
     expect(exitCode).toBe(0);
     expect(stdout.text()).toBe("env@thefocus.ai\n");
+  });
+
+  it("lists the active Publisher's active and removed Publications", async () => {
+    const configDir = await mkdtemp(join(tmpdir(), "artifacts-cli-"));
+    const tokenStore = new InMemoryPublisherTokenStore();
+    const metadataStore = new InMemoryPublicationMetadataStore({
+      now: () => new Date("2026-05-20T12:00:00.000Z"),
+    });
+    await issuePublisherToken({
+      email: "publisher@thefocus.ai",
+      store: tokenStore,
+      tokenFactory: () => "tfai_pub_list",
+    });
+    await runCli(["login", "--token", "tfai_pub_list"], { configDir });
+    await metadataStore.create({
+      opaqueId: "ActivePub",
+      publisherEmail: "publisher@thefocus.ai",
+      activeManifestRef: "manifest-active",
+      activeArtifactLocator: "blob://active",
+    });
+    await metadataStore.create({
+      opaqueId: "OtherPub",
+      publisherEmail: "other@thefocus.ai",
+      activeManifestRef: "manifest-other",
+      activeArtifactLocator: "blob://other",
+    });
+    await metadataStore.create({
+      opaqueId: "RemovedPub",
+      publisherEmail: "publisher@thefocus.ai",
+      activeManifestRef: "manifest-removed",
+      activeArtifactLocator: "blob://removed",
+    });
+    await metadataStore.markRemoved("RemovedPub");
+    const stdout = streamCapture();
+    const stderr = streamCapture();
+
+    const exitCode = await runCli(
+      ["list", "--base-url", "https://preview.test"],
+      {
+        configDir,
+        tokenStore,
+        metadataStore,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stderr.text()).toBe("");
+    expect(stdout.text()).toContain("LAST UPDATED");
+    expect(stdout.text()).toContain("STATUS");
+    expect(stdout.text()).toContain("PUBLICATION URL");
+    expect(stdout.text()).toContain(
+      "2026-05-20T12:00:00.000Z  active   https://preview.test/a/ActivePub",
+    );
+    expect(stdout.text()).toContain(
+      "2026-05-20T12:00:00.000Z  removed  https://preview.test/a/RemovedPub",
+    );
+    expect(stdout.text()).not.toContain("OtherPub");
+  });
+
+  it("requires an authenticated Publisher Token before listing Publications", async () => {
+    const configDir = await mkdtemp(join(tmpdir(), "artifacts-cli-"));
+    const stderr = streamCapture();
+
+    const exitCode = await runCli(["list"], {
+      configDir,
+      stderr: stderr.stream,
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderr.text()).toContain("A valid Publisher Token is required");
   });
 
   it("logout removes local token state only", async () => {
