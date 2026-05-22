@@ -11,7 +11,7 @@ import {
   removePublication,
   type PreparedArtifactUpload,
 } from "../src/publication.js";
-import { FilePublicationStateStore } from "../src/local-config.js";
+import { InMemoryPublicationStateStore } from "../src/local-config.js";
 import { VercelBlobArtifactContentStore } from "../src/storage/artifact-content.js";
 import { createNeonPublicationMetadataStore } from "../src/storage/publication-metadata.js";
 
@@ -39,7 +39,7 @@ export async function handleArtifactsApiRequest(
     const tokenStore = createNeonPublisherTokenStore();
     const metadataStore = createNeonPublicationMetadataStore();
     const contentStore = new VercelBlobArtifactContentStore();
-    const stateStore = new FilePublicationStateStore();
+    const stateStore = new InMemoryPublicationStateStore();
     const publisherEmail = await authenticatePublisherToken({
       token,
       store: tokenStore,
