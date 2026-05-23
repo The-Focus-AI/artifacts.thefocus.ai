@@ -1,6 +1,7 @@
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -319,5 +320,74 @@ describe("CLI Publisher Token commands", () => {
     expect(exitCode).toBe(1);
     expect(removePublication).not.toHaveBeenCalled();
     expect(stdout.text()).toContain("Removal cancelled.");
+  });
+
+  it("publishes from standard input (-) successfully", async () => {
+    const configDir = await mkdtemp(join(tmpdir(), "artifacts-cli-"));
+    const stdout = streamCapture();
+    const apiClient = {
+      whoami: vi.fn(),
+      list: vi.fn(),
+      remove: vi.fn(),
+      publish: vi.fn(async (token, sourcePath, options) => ({
+        opaqueId: "NewStdinPub",
+        publicationUrl: "https://artifacts.thefocus.ai/a/NewStdinPub",
+        revisionWindowExpiresAt: new Date("2026-05-20T12:15:00.000Z"),
+        decision: "create" as const,
+      })),
+    };
+    const mockStdin = Readable.from(["<h1>Stdin Content</h1>"]);
+
+    const exitCode = await runCli(
+      ["publish", "-"],
+      {
+        configDir,
+        env: { THEFOCUS_ARTIFACTS_TOKEN: "tfai_pub_stdin_test" },
+        stdout: stdout.stream,
+        apiClient,
+        stdin: mockStdin as any,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(apiClient.publish).toHaveBeenCalledOnce();
+    const [tokenArg, pathArg, optionsArg] = apiClient.publish.mock.calls[0]!;
+    expect(tokenArg).toBe("tfai_pub_stdin_test");
+    expect(pathArg).toBe(join(configDir, "stdin.html"));
+    await expect(
+      readFile(pathArg, "utf8"),
+    ).resolves.toBe("<h1>Stdin Content</h1>");
+    expect(stdout.text()).toContain("https://artifacts.thefocus.ai/a/NewStdinPub");
+  });
+
+  it("opens the browser automatically if --open is specified", async () => {
+    const configDir = await mkdtemp(join(tmpdir(), "artifacts-cli-"));
+    const stdout = streamCapture();
+    const apiClient = {
+      whoami: vi.fn(),
+      list: vi.fn(),
+      remove: vi.fn(),
+      publish: vi.fn(async (token, sourcePath, options) => ({
+        opaqueId: "NewOpenPub",
+        publicationUrl: "https://artifacts.thefocus.ai/a/NewOpenPub",
+        revisionWindowExpiresAt: new Date("2026-05-20T12:15:00.000Z"),
+        decision: "create" as const,
+      })),
+    };
+    const openBrowser = vi.fn(async () => {});
+
+    const exitCode = await runCli(
+      ["publish", "index.html", "--open"],
+      {
+        configDir,
+        env: { THEFOCUS_ARTIFACTS_TOKEN: "tfai_pub_open_test" },
+        stdout: stdout.stream,
+        apiClient,
+        openBrowser,
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(openBrowser).toHaveBeenCalledWith("https://artifacts.thefocus.ai/a/NewOpenPub");
   });
 });

@@ -6,12 +6,13 @@ Artifacts turns local agent output into an unlisted Publication URL. A verified 
 
 ## Primary agent workflow
 
-1. Create or update a local HTML Artifact.
-2. Publish it with the CLI:
+1. Create or update a local HTML Artifact, or generate HTML output.
+2. Publish it with the CLI (supporting directories, single files, or piping via stdin using `-`):
 
    ```bash
    npx @the-focus-ai/artifacts publish ./artifact.html
-   npx @the-focus-ai/artifacts publish ./dist
+   npx @the-focus-ai/artifacts publish ./dist --open
+   cat report.html | npx @the-focus-ai/artifacts publish - --open
    ```
 
 3. Return the printed Publication URL to the user.

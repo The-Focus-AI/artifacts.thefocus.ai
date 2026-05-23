@@ -89,7 +89,7 @@ async function findFreePort(): Promise<number> {
   });
 }
 
-async function openDefaultBrowser(url: string): Promise<void> {
+export async function openDefaultBrowser(url: string): Promise<void> {
   const { exec } = await import("node:child_process");
   const command =
     process.platform === "darwin"
