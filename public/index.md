@@ -9,7 +9,8 @@ Artifacts is a dynamic publishing skill for TheFocus.AI agents. Use it when an a
 
 ```bash
 npx @the-focus-ai/artifacts publish ./artifact.html
-npx @the-focus-ai/artifacts publish ./dist
+npx @the-focus-ai/artifacts publish ./dist --open
+pbpaste | npx @the-focus-ai/artifacts publish - --open
 ```
 
 The CLI prints a Publication URL like:
@@ -24,6 +25,8 @@ Share that URL with the user or client. Anyone with the exact URL can view it wi
 
 - Publish a single HTML file when the Artifact is self-contained.
 - Publish a directory when the Artifact has CSS, JavaScript, images, or nested pages.
+- Pipe HTML output directly into the CLI via stdin (`-`).
+- Use the `--open` flag to automatically open the Publication URL in your browser upon completion.
 - Rerun the same publish command shortly after publishing to hotfix the same URL during the rolling Revision Window.
 - Use `THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_...` for non-interactive agent sessions.
 - Use `npx @the-focus-ai/artifacts remove <Publication URL> --yes` to remove an accidental Publication.

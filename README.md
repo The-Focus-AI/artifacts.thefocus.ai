@@ -36,6 +36,8 @@ Install/run the CLI through npm or the repo-local script:
 ```bash
 npx @the-focus-ai/artifacts publish ./artifact.html
 pnpm artifacts publish ./artifact.html
+pnpm artifacts publish ./dist --open
+pbpaste | pnpm artifacts publish - --open
 ```
 
 Log in once with a browser, or store a pre-issued Publisher Token non-interactively:
@@ -46,7 +48,7 @@ pnpm artifacts login --token tfai_pub_...
 pnpm artifacts whoami
 ```
 
-The publishing path accepts one local HTML file or one local directory and returns a canonical unlisted Publication URL. In agent workflows, publish the generated Artifact and include the printed URL in the final response:
+The publishing path accepts one local HTML file, one local directory, or standard input (`-`), and returns a canonical unlisted Publication URL. In agent workflows, publish the generated Artifact and include the printed URL in the final response:
 
 ```bash
 THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { realpathSync } from "node:fs";
-import { realpath } from "node:fs/promises";
+import { realpath, writeFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
@@ -18,7 +19,7 @@ import {
 	writeLocalPublisherConfig,
 } from "./local-config.js";
 import type { BrowserLoginResult } from "./login-flow.js";
-import { loginWithBrowserFlow } from "./login-flow.js";
+import { loginWithBrowserFlow, openDefaultBrowser } from "./login-flow.js";
 import {
 	absolutePublicationUrl,
 	defaultPublicBaseUrl,
@@ -79,15 +80,29 @@ export async function runCli(
 		if (command === "publish" && firstArg) {
 			const token = await resolvePublisherToken({ env, configDir });
 			if (!token.token) throw new Error("A valid Publisher Token is required");
+
+			let sourcePath = firstArg;
+			if (firstArg === "-") {
+				const stdinStream = dependencies.stdin ?? process.stdin;
+				if (stdinStream.isTTY) {
+					stdout.write("Reading HTML from stdin (press Ctrl+D when finished)...\n");
+				}
+				const content = await readStdin(stdinStream);
+				await mkdir(configDir, { recursive: true });
+				const tempFile = join(configDir, "stdin.html");
+				await writeFile(tempFile, content, "utf-8");
+				sourcePath = tempFile;
+			}
+
 			const result = dependencies.apiClient
-				? await dependencies.apiClient.publish(token.token, firstArg, {
+				? await dependencies.apiClient.publish(token.token, sourcePath, {
 						publicBaseUrl: options["base-url"],
 						entryPage: options["entry-page"],
 						forceNew: Object.hasOwn(options, "new"),
 						updatePublicationUrl: options.update,
 					})
 				: dependencies.tokenStore || dependencies.metadataStore
-					? await publishArtifactFromEnvironment(firstArg, {
+					? await publishArtifactFromEnvironment(sourcePath, {
 							publicBaseUrl: options["base-url"],
 							entryPage: options["entry-page"],
 							env,
@@ -95,7 +110,7 @@ export async function runCli(
 							forceNew: Object.hasOwn(options, "new"),
 							updatePublicationUrl: options.update,
 						})
-					: await publishWithDefaultApiClient(firstArg, token.token, {
+					: await publishWithDefaultApiClient(sourcePath, token.token, {
 							env,
 							configDir,
 							publicBaseUrl: options["base-url"],
@@ -106,6 +121,10 @@ export async function runCli(
 			stdout.write(
 				`${publishArtifactSummary(result, { verbose: options.verbose === "true" })}\n`,
 			);
+			if (Object.hasOwn(options, "open")) {
+				const openFn = dependencies.openBrowser ?? openDefaultBrowser;
+				await openFn(result.publicationUrl);
+			}
 			return 0;
 		}
 
@@ -364,11 +383,20 @@ async function confirmRemoval(
 	}
 }
 
+function readStdin(stream: NodeJS.ReadableStream): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const chunks: Buffer[] = [];
+		stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+		stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+		stream.on("error", reject);
+	});
+}
+
 function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
 	output.write(
 		"Usage: artifacts <login|logout|whoami|publish|remove|list>\n" +
 			"  artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
-			"  artifacts publish <file.html|directory> [--entry-page index.html] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose]\n" +
+			"  artifacts publish <file.html|directory> [--entry-page index.html] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose] [--open]\n" +
 			"  artifacts remove <Publication URL> [--yes] [--base-url https://artifacts.thefocus.ai]\n" +
 			"  artifacts list [--base-url https://artifacts.thefocus.ai]\n" +
 			"  artifacts whoami [--base-url https://artifacts.thefocus.ai]\n" +
