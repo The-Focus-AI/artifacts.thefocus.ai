@@ -331,9 +331,13 @@ describe("CLI Publisher Token commands", () => {
       remove: vi.fn(),
       publish: vi.fn(async (token, sourcePath, options) => ({
         opaqueId: "NewStdinPub",
+        publicationUrlPath: "NewStdinPub",
         publicationUrl: "https://artifacts.thefocus.ai/a/NewStdinPub",
+        manifestRef: "manifest-stdin",
+        activeArtifactLocator: "blob://stdin",
         revisionWindowExpiresAt: new Date("2026-05-20T12:15:00.000Z"),
-        decision: "create" as const,
+        decision: "created" as const,
+        artifactPaths: ["index.html"],
       })),
     };
     const mockStdin = Readable.from(["<h1>Stdin Content</h1>"]);
@@ -369,9 +373,13 @@ describe("CLI Publisher Token commands", () => {
       remove: vi.fn(),
       publish: vi.fn(async (token, sourcePath, options) => ({
         opaqueId: "NewOpenPub",
+        publicationUrlPath: "NewOpenPub",
         publicationUrl: "https://artifacts.thefocus.ai/a/NewOpenPub",
+        manifestRef: "manifest-open",
+        activeArtifactLocator: "blob://open",
         revisionWindowExpiresAt: new Date("2026-05-20T12:15:00.000Z"),
-        decision: "create" as const,
+        decision: "created" as const,
+        artifactPaths: ["index.html"],
       })),
     };
     const openBrowser = vi.fn(async () => {});
