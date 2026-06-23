@@ -183,7 +183,7 @@ function showTokenDisplay(
     title: "Publisher Token — Artifacts",
     heading: "Publisher Token created",
     tone: "success",
-    body: `Signed in as ${escapeHtml(email)}. Run this command to store your Publisher Token:<pre><code>artifacts login --token ${escapeHtml(token)}</code></pre>`,
+    body: `Signed in as ${escapeHtml(email)}. Run this command to store your Publisher Token:<pre><code>npx @the-focus-ai/artifacts login --token ${escapeHtml(token)}</code></pre>`,
   });
 }
 

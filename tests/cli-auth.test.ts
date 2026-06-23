@@ -37,7 +37,7 @@ describe("CLI Publisher Token commands", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(stdout.text()).toContain("Usage: artifacts");
+    expect(stdout.text()).toContain("Usage: npx @the-focus-ai/artifacts");
     expect(stderr.text()).toBe("");
   });
 
@@ -342,26 +342,25 @@ describe("CLI Publisher Token commands", () => {
     };
     const mockStdin = Readable.from(["<h1>Stdin Content</h1>"]);
 
-    const exitCode = await runCli(
-      ["publish", "-"],
-      {
-        configDir,
-        env: { THEFOCUS_ARTIFACTS_TOKEN: "tfai_pub_stdin_test" },
-        stdout: stdout.stream,
-        apiClient,
-        stdin: mockStdin as any,
-      },
-    );
+    const exitCode = await runCli(["publish", "-"], {
+      configDir,
+      env: { THEFOCUS_ARTIFACTS_TOKEN: "tfai_pub_stdin_test" },
+      stdout: stdout.stream,
+      apiClient,
+      stdin: mockStdin as any,
+    });
 
     expect(exitCode).toBe(0);
     expect(apiClient.publish).toHaveBeenCalledOnce();
     const [tokenArg, pathArg, optionsArg] = apiClient.publish.mock.calls[0]!;
     expect(tokenArg).toBe("tfai_pub_stdin_test");
     expect(pathArg).toBe(join(configDir, "stdin.html"));
-    await expect(
-      readFile(pathArg, "utf8"),
-    ).resolves.toBe("<h1>Stdin Content</h1>");
-    expect(stdout.text()).toContain("https://artifacts.thefocus.ai/a/NewStdinPub");
+    await expect(readFile(pathArg, "utf8")).resolves.toBe(
+      "<h1>Stdin Content</h1>",
+    );
+    expect(stdout.text()).toContain(
+      "https://artifacts.thefocus.ai/a/NewStdinPub",
+    );
   });
 
   it("opens the browser automatically if --open is specified", async () => {
@@ -384,18 +383,17 @@ describe("CLI Publisher Token commands", () => {
     };
     const openBrowser = vi.fn(async () => {});
 
-    const exitCode = await runCli(
-      ["publish", "index.html", "--open"],
-      {
-        configDir,
-        env: { THEFOCUS_ARTIFACTS_TOKEN: "tfai_pub_open_test" },
-        stdout: stdout.stream,
-        apiClient,
-        openBrowser,
-      },
-    );
+    const exitCode = await runCli(["publish", "index.html", "--open"], {
+      configDir,
+      env: { THEFOCUS_ARTIFACTS_TOKEN: "tfai_pub_open_test" },
+      stdout: stdout.stream,
+      apiClient,
+      openBrowser,
+    });
 
     expect(exitCode).toBe(0);
-    expect(openBrowser).toHaveBeenCalledWith("https://artifacts.thefocus.ai/a/NewOpenPub");
+    expect(openBrowser).toHaveBeenCalledWith(
+      "https://artifacts.thefocus.ai/a/NewOpenPub",
+    );
   });
 });

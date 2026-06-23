@@ -55,7 +55,7 @@ THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
 fnox exec -- pnpm artifacts publish ./artifact.html
 ```
 
-Publisher Tokens are issued only to verified emails ending exactly in `@thefocus.ai`, are stored hashed server-side, and can be stored locally with `artifacts login --token <token>` or supplied non-interactively with `THEFOCUS_ARTIFACTS_TOKEN` (which overrides local config). Local CLI token state is stored under `~/.config/thefocus-artifacts/` with restricted file permissions where supported; `artifacts whoami` validates the active token through the hosted Artifacts API, `artifacts list` shows the current Publisher's active and removed Publications, and `artifacts logout` removes local token state.
+Publisher Tokens are issued only to verified emails ending exactly in `@thefocus.ai`, are stored hashed server-side, and can be stored locally with `npx @the-focus-ai/artifacts login --token <token>` or supplied non-interactively with `THEFOCUS_ARTIFACTS_TOKEN` (which overrides local config). Local CLI token state is stored under `~/.config/thefocus-artifacts/` with restricted file permissions where supported; `npx @the-focus-ai/artifacts whoami` validates the active token through the hosted Artifacts API, `npx @the-focus-ai/artifacts list` shows the current Publisher's active and removed Publications, and `npx @the-focus-ai/artifacts logout` removes local token state.
 
 Normal npm CLI usage only needs a Publisher Token. Infrastructure secrets such as `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` are required only for local development of the server/Vercel functions or deployed server-side API routes; publishers and agents running `npx @the-focus-ai/artifacts ...` should not set those secrets locally.
 

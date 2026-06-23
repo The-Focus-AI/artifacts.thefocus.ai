@@ -32,7 +32,7 @@ If this repository also links to TheFocus.AI standards repository, read its `AGE
 
 Publisher authentication uses Clerk for browser-based login with an automatic token handoff:
 
-1. `artifacts login` starts a localhost HTTP server on a random port and opens the browser to `/login?port=N`.
+1. `npx @the-focus-ai/artifacts login` starts a localhost HTTP server on a random port and opens the browser to `/login?port=N`.
 2. `api/login.ts` (Vercel function) redirects to Clerk's hosted sign-in page.
 3. After Clerk auth, the user is redirected back to `api/login.ts` with a session token.
 4. The server verifies the session via `@clerk/backend`, checks the email ends in `@thefocus.ai`:
@@ -46,7 +46,7 @@ Key files:
 - `src/login-flow.ts` — CLI localhost callback server + browser opener
 - `api/login.ts` — Vercel serverless function, exports `handleLoginRequest` for testing
 
-The `artifacts login --token <token>` escape hatch bypasses the browser flow entirely for CI/non-interactive use.
+The `npx @the-focus-ai/artifacts login --token <token>` escape hatch bypasses the browser flow entirely for CI/non-interactive use.
 
 Clerk secrets (`CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SIGN_IN_DOMAIN`) are declared in `fnox.toml` and stored in 1Password vault "Artifacts". The Clerk redirect URL must include `https://artifacts.thefocus.ai/login` in the Clerk dashboard.
 
