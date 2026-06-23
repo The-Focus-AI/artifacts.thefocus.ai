@@ -161,7 +161,7 @@ describe("/login/callback route", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.body).toContain("artifacts login --token");
+    expect(res.body).toContain("npx @the-focus-ai/artifacts login --token");
     expect(res.body).toContain("tfai_pub_display");
   });
 
