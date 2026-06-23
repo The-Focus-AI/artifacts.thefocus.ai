@@ -76,7 +76,7 @@ The product surface is intentionally small: CLI management, static Publication v
 48. As a Publisher, I want Removal to delete Blob contents immediately, so that sensitive accidental publishes are cleaned up rather than only hidden.
 49. As a Publisher, I want any authenticated Publisher with a Publication URL to be able to update or remove it, so that the small team can handle emergency changes without ownership bureaucracy.
 50. As a Publisher, I want `artifacts list`, so that I can see my own Publications from the CLI.
-51. As a Publisher, I want `artifacts list` to show last updated time, status, and Publication URL, so that I can find recent active and removed Publications.
+51. As a Publisher, I want `artifacts list` to show last updated time, status, title, and Publication URL, so that I can find recent active and removed Publications.
 52. As a Publisher, I want `artifacts list` to include removed Publications, so that I have a simple audit trail.
 53. As a Publisher, I want `artifacts list` to show all my Publications in v1, so that I do not have to think about pagination yet.
 54. As a Publisher, I want the service to store my verified Publisher email, so that my Publications can be listed and audited by email.
@@ -134,7 +134,7 @@ The product surface is intentionally small: CLI management, static Publication v
 - Removal disables the Publication URL, returns 404 to viewers, deletes Blob contents immediately, and marks metadata as removed.
 - Interactive `remove` asks for confirmation; `--yes` skips confirmation. Removing a Publication clears matching local state if present.
 - If local state points to a removed Publication, the next plain publish creates a new Publication.
-- `list` shows the current Publisher's Publications only, not all team Publications. It includes active and removed Publications, shows last updated time, status, and Publication URL, and shows all results in v1.
+- `list` shows the current Publisher's Publications only, not all team Publications. It includes active and removed Publications, shows last updated time, status, title, and Publication URL, and shows all results in v1.
 - Store verified Publisher email in Publication metadata. V1 does not need Clerk user ID metadata unless implementation requires it.
 - Serve Publication responses with `Cache-Control: no-store`.
 - Provide `robots.txt` disallowing `/a/` and `X-Robots-Tag: noindex, nofollow` on Publication responses.
@@ -186,7 +186,7 @@ The product surface is intentionally small: CLI management, static Publication v
 - Server-side Publisher Token revocation.
 - OS keychain storage.
 - Standalone binary or Homebrew distribution.
-- Title/label metadata for Publications.
+- Title/label metadata for Publications (added later).
 - Pagination or filtering for `artifacts list` in v1.
 
 ## Further Notes

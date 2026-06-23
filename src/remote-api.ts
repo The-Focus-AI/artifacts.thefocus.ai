@@ -29,6 +29,7 @@ export interface RemotePublishOptions {
   entryPage?: string;
   forceNew?: boolean;
   updatePublicationUrl?: string;
+  title?: string;
 }
 
 export class HttpArtifactApiClient implements ArtifactApiClient {
@@ -124,6 +125,7 @@ export function artifactUploadForm(
       publicBaseUrl: options.publicBaseUrl,
       forceNew: options.forceNew ?? false,
       updatePublicationUrl: options.updatePublicationUrl,
+      title: options.title,
     }),
   );
   for (const file of upload.files) {

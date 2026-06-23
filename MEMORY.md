@@ -21,7 +21,7 @@ host
 ## Commands
 
 - setup: mise run setup
-- run: pnpm artifacts publish <path>
+- run: pnpm artifacts publish <path> [--title "Name"]
 
 ## Required Env Vars
 

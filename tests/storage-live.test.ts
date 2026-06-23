@@ -105,6 +105,8 @@ async function applyMigration(sql: MigrationSqlClient) {
   const migration = [
     "0001_publications.sql",
     "0002_add_active_artifact_locator.sql",
+    "0003_create_publisher_tokens.sql",
+    "0004_add_title.sql",
   ]
     .map((fileName) =>
       readFileSync(join(process.cwd(), "migrations", fileName), "utf8"),

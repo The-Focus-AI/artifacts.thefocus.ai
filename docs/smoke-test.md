@@ -29,7 +29,7 @@ HTML
 
 ARTIFACTS_PUBLIC_BASE_URL="$BASE_URL" pnpm artifacts login --base-url "$BASE_URL"
 ARTIFACTS_PUBLIC_BASE_URL="$BASE_URL" pnpm artifacts whoami
-ARTIFACTS_PUBLIC_BASE_URL="$BASE_URL" pnpm artifacts publish "$SMOKE_DIR"
+ARTIFACTS_PUBLIC_BASE_URL="$BASE_URL" pnpm artifacts publish "$SMOKE_DIR" --title "Smoke Test"
 ```
 
 Copy the printed Publication URL as `PUBLICATION_URL`, then verify viewing headers and body:
@@ -51,7 +51,7 @@ Hotfix within 15 minutes:
 cat > "$SMOKE_DIR/index.html" <<'HTML'
 <!doctype html><h1>Artifacts smoke hotfix</h1>
 HTML
-ARTIFACTS_PUBLIC_BASE_URL="$BASE_URL" pnpm artifacts publish "$SMOKE_DIR"
+ARTIFACTS_PUBLIC_BASE_URL="$BASE_URL" pnpm artifacts publish "$SMOKE_DIR" --title "Smoke Test Hotfix"
 curl -i "$PUBLICATION_URL"
 ```
 
@@ -68,7 +68,7 @@ ARTIFACTS_PUBLIC_BASE_URL="$BASE_URL" pnpm artifacts logout
 
 Expected:
 
-- `list` includes the active Publication URL before Removal.
+- `list` includes the active Publication URL and title before Removal.
 - `remove --yes` prints `Removed ...`.
 - The final curl returns HTTP `404`.
 - `logout` removes local Publisher Token state.
