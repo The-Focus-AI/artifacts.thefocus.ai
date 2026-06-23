@@ -182,6 +182,7 @@ describe("CLI Publisher Token commands", () => {
       publisherEmail: "publisher@thefocus.ai",
       activeManifestRef: "manifest-active",
       activeArtifactLocator: "blob://active",
+      title: "Quarterly Results",
     });
     await metadataStore.create({
       opaqueId: "OtherPub",
@@ -214,13 +215,13 @@ describe("CLI Publisher Token commands", () => {
     expect(stderr.text()).toBe("");
     expect(stdout.text()).toContain("LAST UPDATED");
     expect(stdout.text()).toContain("STATUS");
+    expect(stdout.text()).toContain("TITLE");
     expect(stdout.text()).toContain("PUBLICATION URL");
-    expect(stdout.text()).toContain(
-      "2026-05-20T12:00:00.000Z  active   https://preview.test/a/ActivePub",
-    );
-    expect(stdout.text()).toContain(
-      "2026-05-20T12:00:00.000Z  removed  https://preview.test/a/RemovedPub",
-    );
+    expect(stdout.text()).toContain("2026-05-20T12:00:00.000Z  active");
+    expect(stdout.text()).toContain("https://preview.test/a/ActivePub");
+    expect(stdout.text()).toContain("Quarterly Results");
+    expect(stdout.text()).toContain("2026-05-20T12:00:00.000Z  removed");
+    expect(stdout.text()).toContain("https://preview.test/a/RemovedPub");
     expect(stdout.text()).not.toContain("OtherPub");
   });
 

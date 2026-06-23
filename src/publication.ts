@@ -38,6 +38,15 @@ const maxSingleFileBytes = 25 * 1024 * 1024;
 const maxTotalArtifactBytes = 100 * 1024 * 1024;
 const maxArtifactFileCount = 1_000;
 
+export function extractHtmlTitle(input: string | Buffer): string | null {
+  const s = typeof input === "string" ? input : input.toString("utf8");
+  // Match the first <title>...</title>, case-insensitive, capture inner text
+  const match = s.match(/<title[^>]*>\s*([\s\S]*?)\s*<\/title>/i);
+  if (!match) return null;
+  const title = match[1].replace(/\s+/g, " ").trim();
+  return title.length > 0 ? title.slice(0, 200) : null;
+}
+
 export interface PublishSingleFileArtifactInput {
   filePath: string;
   publisherEmail: string;
@@ -47,6 +56,7 @@ export interface PublishSingleFileArtifactInput {
   opaqueId?: string;
   manifestRef?: string;
   now?: () => Date;
+  title?: string;
 }
 
 export interface PublishSingleFileArtifactResult {
@@ -84,6 +94,7 @@ export async function publishSingleFileArtifact(
     activeArtifactLocator: written.url,
     localSourcePath: absoluteFilePath,
     revisionWindowExpiresAt: null,
+    title: input.title ?? extractHtmlTitle(html),
   });
 
   return {
@@ -108,6 +119,7 @@ export interface PublishDirectoryArtifactInput {
   opaqueId?: string;
   manifestRef?: string;
   now?: () => Date;
+  title?: string;
 }
 
 export interface PublishDirectoryArtifactResult {
@@ -142,6 +154,7 @@ export interface PublishArtifactInput {
   opaqueIdFactory?: () => string;
   manifestRefFactory?: (body: Buffer) => string;
   now?: () => Date;
+  title?: string;
 }
 
 export interface PublishArtifactResult {
@@ -199,6 +212,7 @@ export interface PublishUploadedArtifactInput {
   updatePublicationUrl?: string;
   opaqueIdFactory?: () => string;
   now?: () => Date;
+  title?: string;
 }
 
 interface DirectoryArtifactManifest {
@@ -279,6 +293,10 @@ export async function publishDirectoryArtifact(
     contentType: directoryManifestContentType,
   });
 
+  const derivedTitle = entryFile
+    ? extractHtmlTitle(await readFile(entryFile.absolutePath))
+    : null;
+
   const publication = await input.metadataStore.create({
     opaqueId,
     publisherEmail: input.publisherEmail,
@@ -286,6 +304,7 @@ export async function publishDirectoryArtifact(
     activeArtifactLocator: manifestWritten.url,
     localSourcePath: absoluteDirectoryPath,
     revisionWindowExpiresAt: null,
+    title: input.title ?? derivedTitle,
   });
 
   return {
@@ -513,6 +532,7 @@ export async function publishArtifactFromEnvironment(
     configDir?: string;
     forceNew?: boolean;
     updatePublicationUrl?: string;
+    title?: string;
   } = {},
 ): Promise<PublishArtifactResult> {
   const env = options.env ?? process.env;
@@ -538,6 +558,7 @@ export async function publishArtifactFromEnvironment(
     entryPage: options.entryPage,
     forceNew: options.forceNew,
     updatePublicationUrl: options.updatePublicationUrl,
+    title: options.title,
   });
 }
 
@@ -627,6 +648,7 @@ export async function publishUploadedArtifact(
     opaqueIdFactory: input.opaqueIdFactory,
     forceNew: input.forceNew,
     updatePublicationUrl: input.updatePublicationUrl,
+    title: input.title,
   } satisfies PublishArtifactInput;
 
   const result = input.updatePublicationUrl
@@ -786,6 +808,7 @@ interface PackagedArtifact {
   activeArtifactLocator: string;
   artifactPaths: string[];
   excludedArtifactPaths: string[];
+  derivedTitle?: string | null;
 }
 
 async function packageArtifactSource(
@@ -804,6 +827,7 @@ async function packageArtifactSource(
     activeArtifactLocator: "pending",
     artifactPaths: [],
     excludedArtifactPaths: [],
+    derivedTitle: undefined,
     async writeForPublication(publicationId: string) {
       const sourceStats = await stat(localSourcePath);
       if (sourceStats.isDirectory()) {
@@ -880,6 +904,7 @@ async function createFreshPublication(
 ): Promise<PublishArtifactResult> {
   const opaqueId = input.opaqueIdFactory?.() ?? createOpaqueId();
   const packaged = await input.packaged.writeForPublication(opaqueId);
+  const title = input.title ?? packaged.derivedTitle ?? null;
   const publication = await input.metadataStore.create({
     opaqueId,
     publisherEmail: input.publisherEmail,
@@ -887,6 +912,7 @@ async function createFreshPublication(
     activeArtifactLocator: packaged.activeArtifactLocator,
     localSourcePath: input.localSourcePath,
     revisionWindowExpiresAt: input.revisionWindowExpiresAt,
+    title,
   });
   const publicationUrl = absolutePublicationUrl(
     input.publicBaseUrl,
@@ -932,11 +958,15 @@ async function updateExistingPublication(
     input.contentStore,
   );
   const packaged = await input.packaged.writeForPublication(input.opaqueId);
+  const title = Object.hasOwn(input, "title")
+    ? (input.title ?? null)
+    : (packaged.derivedTitle ?? undefined);
   const publication = await input.metadataStore.update(input.opaqueId, {
     activeManifestRef: packaged.manifestRef,
     activeArtifactLocator: packaged.activeArtifactLocator,
     localSourcePath: input.localSourcePath,
     revisionWindowExpiresAt: input.revisionWindowExpiresAt,
+    ...(title !== undefined ? { title } : {}),
   });
   if (!publication) throw new Error("Publication URL cannot be updated.");
   await input.contentStore.delete(oldLocators);
@@ -985,9 +1015,13 @@ async function writeUploadedArtifactContent(input: {
       activeArtifactLocator: written.url,
       artifactPaths: [singleFileEntryArtifactPath],
       excludedArtifactPaths: input.upload.excludedArtifactPaths,
+      derivedTitle: extractHtmlTitle(file.body),
     };
   }
 
+  const entryFile = input.upload.files.find(
+    (f) => f.artifactPath === input.upload.entryArtifactPath,
+  );
   const manifest: DirectoryArtifactManifest = {
     kind: directoryManifestKind,
     entryArtifactPath: input.upload.entryArtifactPath,
@@ -1018,6 +1052,7 @@ async function writeUploadedArtifactContent(input: {
     activeArtifactLocator: manifestWritten.url,
     artifactPaths: Object.keys(manifest.files),
     excludedArtifactPaths: input.upload.excludedArtifactPaths,
+    derivedTitle: entryFile ? extractHtmlTitle(entryFile.body) : null,
   };
 }
 
@@ -1042,6 +1077,7 @@ async function writeSingleFileArtifactContent(input: {
     activeArtifactLocator: written.url,
     artifactPaths: [singleFileEntryArtifactPath],
     excludedArtifactPaths: [],
+    derivedTitle: extractHtmlTitle(html),
   };
 }
 
@@ -1072,6 +1108,7 @@ async function writeDirectoryArtifactContent(input: {
   if (!entryArtifactPath.endsWith(".html")) {
     throw new Error("Directory Artifact Entry Page must be an HTML file.");
   }
+  const entryFileBytes = await readFile(entryFile.absolutePath);
   const manifestRef =
     input.manifestRefFactory?.(Buffer.from(input.directoryPath)) ??
     createManifestRef(Buffer.from(input.directoryPath));
@@ -1104,6 +1141,7 @@ async function writeDirectoryArtifactContent(input: {
     activeArtifactLocator: manifestWritten.url,
     artifactPaths: Object.keys(manifest.files),
     excludedArtifactPaths: dirExcluded,
+    derivedTitle: extractHtmlTitle(entryFileBytes),
   };
 }
 

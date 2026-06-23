@@ -18,7 +18,7 @@ For the `artifacts list` slice, keep the implementation aligned with the existin
 - Resolve the Publisher email through the existing token store/authentication path.
 - Query Publication metadata by the authenticated Publisher email only.
 - Return active and removed Publications in one unpaginated v1 response.
-- Format CLI output as a simple human-readable table containing last updated time, status, and full Publication URL.
+- Format CLI output as a simple human-readable table containing last updated time, status, title, and full Publication URL.
 
 ## Neon serverless notes
 
@@ -46,7 +46,7 @@ The existing CLI tests invoke `main(argv, deps)` with injected dependencies and 
 Test the new list feature at two seams:
 
 1. Storage/API seam: list by Publisher email returns only that email's rows and includes both active and removed statuses.
-2. CLI seam: unauthenticated list fails; authenticated list calls the API client with the Publisher Token and prints rows with `updated_at`, status, and full Publication URL.
+2. CLI seam: unauthenticated list fails; authenticated list calls the API client with the Publisher Token and prints rows with `updated_at`, status, title, and full Publication URL.
 
 ## Pitfalls to avoid
 

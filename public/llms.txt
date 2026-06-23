@@ -11,12 +11,14 @@ Artifacts turns local agent output into an unlisted Publication URL. A verified 
 
    ```bash
    npx @the-focus-ai/artifacts publish ./artifact.html
+   npx @the-focus-ai/artifacts publish ./report.html --title "Q2 Results"
    npx @the-focus-ai/artifacts publish ./dist --open
    cat report.html | npx @the-focus-ai/artifacts publish - --open
    ```
 
 3. Return the printed Publication URL to the user.
-4. During the rolling Revision Window, rerun the same publish command to update the same URL for quick fixes.
+4. Use `--title "Report Name"` on publish to set a human-readable title (shown by `npx @the-focus-ai/artifacts list`).
+5. During the rolling Revision Window, rerun the same publish command to update the same URL for quick fixes.
 5. If the Artifact should come down, remove it:
 
    ```bash
@@ -24,6 +26,13 @@ Artifacts turns local agent output into an unlisted Publication URL. A verified 
    ```
 
 For non-interactive agent sessions, use `THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_...`. Browser login is available with `npx @the-focus-ai/artifacts login` when a human Publisher is present.
+
+Use `npx @the-focus-ai/artifacts list` to see your Publications and their titles:
+
+   ```text
+   LAST UPDATED              STATUS    TITLE                            PUBLICATION URL
+   2026-06-23T...            active    Q2 Results                       https://artifacts.thefocus.ai/a/Ab3xY9kQ
+   ```
 
 ## What this service is for
 

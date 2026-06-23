@@ -18,6 +18,7 @@ Apply `migrations/0001_publications.sql` to the Neon/Postgres database before us
 - Publication status (`active` or `removed`)
 - active manifest reference
 - Local Source path and Revision Window expiry fields
+- `title` (human-readable title, derived from `<title>` or supplied with `--title`)
 - created, updated, and removed timestamps
 
 ## Test and local adapters

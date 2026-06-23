@@ -43,3 +43,7 @@ _Avoid_: Deletion, unpublish, archive
 **Local Source**:
 The canonical local filesystem path that a Publisher publishes from. The same Local Source can update the same Publication during its Revision Window.
 _Avoid_: Project, repository, folder mapping
+
+**Title**:
+A human-readable name for a Publication, either extracted from the `<title>` tag in the entry HTML or supplied explicitly via `--title` at publish time. Titles are shown in `artifacts list`.
+_Avoid_: name, label (use Title)

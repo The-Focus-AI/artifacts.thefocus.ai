@@ -102,6 +102,7 @@ export async function runCli(
             entryPage: options["entry-page"],
             forceNew: Object.hasOwn(options, "new"),
             updatePublicationUrl: options.update,
+            title: options["title"],
           })
         : dependencies.tokenStore || dependencies.metadataStore
           ? await publishArtifactFromEnvironment(sourcePath, {
@@ -111,6 +112,7 @@ export async function runCli(
               configDir,
               forceNew: Object.hasOwn(options, "new"),
               updatePublicationUrl: options.update,
+              title: options["title"],
             })
           : await publishWithDefaultApiClient(sourcePath, token.token, {
               env,
@@ -119,6 +121,7 @@ export async function runCli(
               entryPage: options["entry-page"],
               forceNew: Object.hasOwn(options, "new"),
               updatePublicationUrl: options.update,
+              title: options["title"],
             });
       stdout.write(
         `${publishArtifactSummary(result, { verbose: options.verbose === "true" })}\n`,
@@ -273,6 +276,7 @@ async function publishWithDefaultApiClient(
     entryPage?: string;
     forceNew?: boolean;
     updatePublicationUrl?: string;
+    title?: string;
   },
 ) {
   const stateStore = new FilePublicationStateStore(options.configDir);
@@ -294,6 +298,7 @@ async function publishWithDefaultApiClient(
     entryPage: options.entryPage,
     forceNew: options.forceNew,
     updatePublicationUrl,
+    title: options.title,
   });
   try {
     await stateStore.set({
@@ -344,16 +349,19 @@ function formatPublicationList(
   >,
   options: { publicBaseUrl: string },
 ): string {
-  const lines = ["LAST UPDATED              STATUS    PUBLICATION URL"];
+  const lines = [
+    "LAST UPDATED              STATUS    TITLE                            PUBLICATION URL",
+  ];
   if (publications.length === 0) {
     lines.push("No Publications found.");
     return lines.join("\n");
   }
   for (const publication of publications) {
+    const title = (publication.title ?? "").slice(0, 30).padEnd(32);
     lines.push(
       `${publication.updatedAt.toISOString()}  ${publication.status.padEnd(
         8,
-      )} ${absolutePublicationUrl(
+      )} ${title}${absolutePublicationUrl(
         options.publicBaseUrl,
         publication.publicationUrlPath,
       )}`,
@@ -398,7 +406,7 @@ function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
   output.write(
     "Usage: npx @the-focus-ai/artifacts <login|logout|whoami|publish|remove|list>\n" +
       "  npx @the-focus-ai/artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
-      "  npx @the-focus-ai/artifacts publish <file.html|directory> [--entry-page index.html] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose] [--open]\n" +
+      '  npx @the-focus-ai/artifacts publish <file.html|directory> [--entry-page index.html] [--title "My Report"] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose] [--open]\n' +
       "  npx @the-focus-ai/artifacts remove <Publication URL> [--yes] [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts list [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts whoami [--base-url https://artifacts.thefocus.ai]\n" +

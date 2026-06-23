@@ -35,6 +35,7 @@ Install/run the CLI through npm or the repo-local script:
 
 ```bash
 npx @the-focus-ai/artifacts publish ./artifact.html
+npx @the-focus-ai/artifacts publish ./report.html --title "Q2 Results"
 pnpm artifacts publish ./artifact.html
 pnpm artifacts publish ./dist --open
 pbpaste | pnpm artifacts publish - --open
@@ -55,7 +56,9 @@ THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
 fnox exec -- pnpm artifacts publish ./artifact.html
 ```
 
-Publisher Tokens are issued only to verified emails ending exactly in `@thefocus.ai`, are stored hashed server-side, and can be stored locally with `npx @the-focus-ai/artifacts login --token <token>` or supplied non-interactively with `THEFOCUS_ARTIFACTS_TOKEN` (which overrides local config). Local CLI token state is stored under `~/.config/thefocus-artifacts/` with restricted file permissions where supported; `npx @the-focus-ai/artifacts whoami` validates the active token through the hosted Artifacts API, `npx @the-focus-ai/artifacts list` shows the current Publisher's active and removed Publications, and `npx @the-focus-ai/artifacts logout` removes local token state.
+Pass `--title "Report Name"` to set a human-readable title for the Publication (visible via `artifacts list`).
+
+Publisher Tokens are issued only to verified emails ending exactly in `@thefocus.ai`, are stored hashed server-side, and can be stored locally with `npx @the-focus-ai/artifacts login --token <token>` or supplied non-interactively with `THEFOCUS_ARTIFACTS_TOKEN` (which overrides local config). Local CLI token state is stored under `~/.config/thefocus-artifacts/` with restricted file permissions where supported; `npx @the-focus-ai/artifacts whoami` validates the active token through the hosted Artifacts API, `npx @the-focus-ai/artifacts list` shows the current Publisher's active and removed Publications (with titles), and `npx @the-focus-ai/artifacts logout` removes local token state.
 
 Normal npm CLI usage only needs a Publisher Token. Infrastructure secrets such as `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` are required only for local development of the server/Vercel functions or deployed server-side API routes; publishers and agents running `npx @the-focus-ai/artifacts ...` should not set those secrets locally.
 
@@ -75,7 +78,7 @@ THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
 fnox exec -- pnpm artifacts publish ./dist
 ```
 
-Use `--entry-page path/to/page.html` to choose a different HTML Entry Page inside a directory Artifact. Use `--new` to force a fresh Publication during the Revision Window, or `--update <Publication URL>` to intentionally update an older active Publication URL.
+Use `--entry-page path/to/page.html` to choose a different HTML Entry Page inside a directory Artifact. Use `--title "Report Name"` to set a human-readable title (shown in `list`). Use `--new` to force a fresh Publication during the Revision Window, or `--update <Publication URL>` to intentionally update an older active Publication URL.
 
 Other CLI management commands:
 

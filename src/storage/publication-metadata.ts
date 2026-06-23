@@ -11,6 +11,7 @@ export interface PublicationMetadata {
   activeArtifactLocator: string;
   localSourcePath: string | null;
   revisionWindowExpiresAt: Date | null;
+  title: string | null;
   createdAt: Date;
   updatedAt: Date;
   removedAt: Date | null;
@@ -24,6 +25,7 @@ export interface CreatePublicationInput {
   activeArtifactLocator: string;
   localSourcePath?: string | null;
   revisionWindowExpiresAt?: Date | null;
+  title?: string | null;
 }
 
 export interface UpdatePublicationInput {
@@ -31,6 +33,7 @@ export interface UpdatePublicationInput {
   activeArtifactLocator?: string;
   localSourcePath?: string | null;
   revisionWindowExpiresAt?: Date | null;
+  title?: string | null;
 }
 
 export interface PublicationMetadataStore {
@@ -74,6 +77,7 @@ export class InMemoryPublicationMetadataStore implements PublicationMetadataStor
       activeArtifactLocator: input.activeArtifactLocator,
       localSourcePath: input.localSourcePath ?? null,
       revisionWindowExpiresAt: input.revisionWindowExpiresAt ?? null,
+      title: input.title ?? null,
       createdAt: timestamp,
       updatedAt: timestamp,
       removedAt: null,
@@ -105,6 +109,7 @@ export class InMemoryPublicationMetadataStore implements PublicationMetadataStor
       revisionWindowExpiresAt: Object.hasOwn(input, "revisionWindowExpiresAt")
         ? (input.revisionWindowExpiresAt ?? null)
         : row.revisionWindowExpiresAt,
+      title: Object.hasOwn(input, "title") ? (input.title ?? null) : row.title,
       updatedAt: this.now(),
     };
     this.rows.set(opaqueId, next);
@@ -158,9 +163,10 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
           active_artifact_locator,
           local_source_path,
           revision_window_expires_at,
+          title,
           created_at,
           updated_at
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         returning *
       `,
       [
@@ -172,6 +178,7 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
         input.activeArtifactLocator,
         input.localSourcePath ?? null,
         input.revisionWindowExpiresAt ?? null,
+        input.title ?? null,
         timestamp,
         timestamp,
       ],
@@ -201,7 +208,8 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
             active_artifact_locator = $3,
             revision_window_expires_at = $4,
             local_source_path = $5,
-            updated_at = $6
+            title = $6,
+            updated_at = $7
         where opaque_id = $1
         returning *
       `,
@@ -215,6 +223,7 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
         Object.hasOwn(input, "localSourcePath")
           ? (input.localSourcePath ?? null)
           : existing.localSourcePath,
+        Object.hasOwn(input, "title") ? (input.title ?? null) : existing.title,
         this.now(),
       ],
     );
@@ -274,6 +283,7 @@ interface PublicationRow {
   active_artifact_locator: string;
   local_source_path: string | null;
   revision_window_expires_at: Date | string | null;
+  title: string | null;
   created_at: Date | string;
   updated_at: Date | string;
   removed_at: Date | string | null;
@@ -294,6 +304,7 @@ function mapPublicationRow(
     revisionWindowExpiresAt: row.revision_window_expires_at
       ? new Date(row.revision_window_expires_at)
       : null,
+    title: row.title ?? null,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     removedAt: row.removed_at ? new Date(row.removed_at) : null,
