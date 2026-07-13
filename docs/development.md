@@ -21,6 +21,18 @@ Apply `migrations/0001_publications.sql` to the Neon/Postgres database before us
 - `title` (human-readable title, derived from `<title>` or supplied with `--title`)
 - created, updated, and removed timestamps
 
+Apply `migrations/0005_create_living_docs.sql` for the Living Doc collaboration
+feature (see `docs/adr/0005-living-docs-agent-human-review-loop.md`). It adds:
+
+- `living_docs` — the Living Doc itself: `opaque_id` (View Link), `review_id`
+  (Review Link capability), Publisher email, status, title, `current_markdown`,
+  and `latest_version_number`.
+- `living_doc_versions` — immutable Markdown snapshots cut each time the agent
+  pulls feedback.
+- `living_doc_comments` — Reviewer notes (and agent replies) anchored to a span.
+- `living_doc_suggestions` — agent-proposed span changes with `pending` /
+  `accepted` / `rejected` status.
+
 ## Test and local adapters
 
 Automated tests use in-memory/fake adapters, so they do not require Neon or Vercel Blob credentials. Later application code can import:

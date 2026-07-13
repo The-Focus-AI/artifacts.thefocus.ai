@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Review · Living Doc</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #1b1b1f;
+        --muted: #6b7280;
+        --border: #e4e4e7;
+        --panel: #f7f7f8;
+        --accent: #2563eb;
+        --accent-fg: #ffffff;
+        --add: #16a34a;
+        --remove: #dc2626;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #16161a;
+          --fg: #ececf1;
+          --muted: #9ca3af;
+          --border: #2a2a31;
+          --panel: #1e1e24;
+          --accent: #3b82f6;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          15px/1.55 system-ui,
+          sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+      }
+      header {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border);
+      }
+      header h1 {
+        font-size: 1rem;
+        margin: 0;
+      }
+      header .status {
+        color: var(--muted);
+        font-size: 0.8rem;
+        margin-left: auto;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr 20rem;
+        height: calc(100vh - 3.25rem);
+      }
+      @media (max-width: 60rem) {
+        .layout {
+          grid-template-columns: 1fr;
+          height: auto;
+        }
+      }
+      .pane {
+        overflow: auto;
+        border-right: 1px solid var(--border);
+      }
+      .pane-head {
+        position: sticky;
+        top: 0;
+        background: var(--bg);
+        padding: 0.5rem 0.9rem;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+      .cm-editor {
+        height: 100%;
+        font-size: 14px;
+      }
+      #preview {
+        padding: 1rem 1.25rem;
+      }
+      #preview pre {
+        overflow-x: auto;
+        background: var(--panel);
+        padding: 0.75rem;
+        border-radius: 6px;
+      }
+      #preview img {
+        max-width: 100%;
+      }
+      .sidebar {
+        background: var(--panel);
+        border-right: none;
+      }
+      button {
+        font: inherit;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--fg);
+        border-radius: 6px;
+        padding: 0.25rem 0.6rem;
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--accent);
+        color: var(--accent-fg);
+        border-color: transparent;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .card {
+        border: 1px solid var(--border);
+        background: var(--bg);
+        border-radius: 8px;
+        padding: 0.6rem 0.7rem;
+        margin: 0.6rem 0.7rem;
+      }
+      .card .quote {
+        font-size: 0.8rem;
+        color: var(--muted);
+        border-left: 2px solid var(--border);
+        padding-left: 0.5rem;
+        margin: 0.35rem 0;
+        white-space: pre-wrap;
+      }
+      .card .replacement {
+        font-size: 0.82rem;
+        white-space: pre-wrap;
+        border-left: 2px solid var(--add);
+        padding-left: 0.5rem;
+        margin: 0.35rem 0;
+      }
+      .card .row {
+        display: flex;
+        gap: 0.4rem;
+        margin-top: 0.5rem;
+      }
+      .card .meta {
+        font-size: 0.72rem;
+        color: var(--muted);
+      }
+      .card.agent {
+        border-left: 3px solid var(--accent);
+      }
+      .empty {
+        color: var(--muted);
+        font-size: 0.85rem;
+        padding: 0.9rem 0.8rem;
+      }
+      .section-title {
+        padding: 0.8rem 0.8rem 0.2rem;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+      }
+      textarea.comment-input {
+        width: calc(100% - 1.4rem);
+        margin: 0.5rem 0.7rem;
+        min-height: 3rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--fg);
+        padding: 0.4rem;
+        font: inherit;
+        resize: vertical;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1 id="title">Living Doc</h1>
+      <span class="status" id="status">Loading…</span>
+    </header>
+    <div class="layout">
+      <div class="pane" id="editor-pane">
+        <div class="pane-head">
+          Markdown
+          <button id="comment-btn" title="Comment on the selected text">
+            Comment on selection
+          </button>
+        </div>
+        <div id="editor"></div>
+      </div>
+      <div class="pane">
+        <div class="pane-head">Preview</div>
+        <article id="preview"></article>
+      </div>
+      <div class="pane sidebar">
+        <div class="pane-head">Feedback</div>
+        <div class="section-title">Agent suggestions</div>
+        <div id="suggestions"></div>
+        <div class="section-title">Comments</div>
+        <textarea
+          class="comment-input"
+          id="comment-input"
+          placeholder="Select text in the editor, then write a comment here and press Comment on selection."
+        ></textarea>
+        <div id="comments"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { EditorView, basicSetup } from "https://esm.sh/codemirror@6.0.1";
+      import { markdown } from "https://esm.sh/@codemirror/lang-markdown@6.2.5";
+      import { EditorState } from "https://esm.sh/@codemirror/state@6.4.1";
+      import MarkdownIt from "https://esm.sh/markdown-it@14.1.0";
+
+      const reviewId = location.pathname.split("/").filter(Boolean)[1] ?? "";
+      const md = new MarkdownIt({ html: false, linkify: true });
+      const statusEl = document.getElementById("status");
+      const previewEl = document.getElementById("preview");
+
+      let saveTimer = null;
+      let applyingRemote = false;
+
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
+
+      function renderPreview(text) {
+        previewEl.innerHTML = md.render(text || "");
+      }
+
+      async function api(action, method, body) {
+        const url = `/api/review?review=${encodeURIComponent(
+          reviewId,
+        )}&action=${action}`;
+        const response = await fetch(url, {
+          method,
+          headers: body ? { "content-type": "application/json" } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        if (!response.ok) {
+          throw new Error((await response.text()) || `Request failed`);
+        }
+        return response.json();
+      }
+
+      function scheduleSave() {
+        if (saveTimer) clearTimeout(saveTimer);
+        setStatus("Editing…");
+        saveTimer = setTimeout(async () => {
+          try {
+            await api("save", "POST", { markdown: view.state.doc.toString() });
+            setStatus("Saved");
+          } catch (error) {
+            setStatus(`Save failed: ${error.message}`);
+          }
+        }, 700);
+      }
+
+      const view = new EditorView({
+        parent: document.getElementById("editor"),
+        state: EditorState.create({
+          doc: "",
+          extensions: [
+            basicSetup,
+            markdown(),
+            EditorView.lineWrapping,
+            EditorView.updateListener.of((update) => {
+              if (update.docChanged) {
+                renderPreview(update.state.doc.toString());
+                if (!applyingRemote) scheduleSave();
+              }
+            }),
+          ],
+        }),
+      });
+
+      function setDocText(text) {
+        applyingRemote = true;
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: text },
+        });
+        applyingRemote = false;
+        renderPreview(text);
+      }
+
+      document
+        .getElementById("comment-btn")
+        .addEventListener("click", async () => {
+          const sel = view.state.selection.main;
+          const quote = view.state.sliceDoc(sel.from, sel.to);
+          const input = document.getElementById("comment-input");
+          const bodyText = input.value.trim();
+          if (!quote) {
+            setStatus("Select some text to comment on first.");
+            return;
+          }
+          if (!bodyText) {
+            setStatus("Write a comment before submitting.");
+            return;
+          }
+          try {
+            await api("comment", "POST", {
+              anchorQuote: quote,
+              anchorStart: sel.from,
+              anchorEnd: sel.to,
+              body: bodyText,
+            });
+            input.value = "";
+            await refresh();
+            setStatus("Comment added");
+          } catch (error) {
+            setStatus(`Comment failed: ${error.message}`);
+          }
+        });
+
+      function suggestionCard(s) {
+        const card = document.createElement("div");
+        card.className = "card agent";
+        card.innerHTML = `
+          <div class="meta">Suggestion${s.note ? " · " + escapeHtml(s.note) : ""}</div>
+          <div class="quote">${escapeHtml(s.anchorQuote)}</div>
+          <div class="replacement">${escapeHtml(s.replacement)}</div>
+        `;
+        const row = document.createElement("div");
+        row.className = "row";
+        const accept = document.createElement("button");
+        accept.className = "primary";
+        accept.textContent = "Accept";
+        accept.onclick = () => decide(s.id, "accepted");
+        const reject = document.createElement("button");
+        reject.textContent = "Reject";
+        reject.onclick = () => decide(s.id, "rejected");
+        row.append(accept, reject);
+        card.append(row);
+        return card;
+      }
+
+      async function decide(suggestionId, decision) {
+        try {
+          const result = await api("decide", "POST", {
+            suggestionId,
+            decision,
+          });
+          if (decision === "accepted") {
+            if (result.applied) {
+              setDocText(result.markdown);
+              setStatus("Suggestion applied");
+            } else {
+              setStatus(
+                "Accepted, but the anchored text had changed — apply manually.",
+              );
+            }
+          } else {
+            setStatus("Suggestion rejected");
+          }
+          await refresh();
+        } catch (error) {
+          setStatus(`Decision failed: ${error.message}`);
+        }
+      }
+
+      function commentCard(c) {
+        const card = document.createElement("div");
+        card.className = c.origin === "agent" ? "card agent" : "card";
+        const who = c.origin === "agent" ? "Agent" : c.author || "Reviewer";
+        card.innerHTML = `
+          <div class="meta">${escapeHtml(who)}${
+            c.status === "resolved" ? " · resolved" : ""
+          }</div>
+          ${c.anchorQuote ? `<div class="quote">${escapeHtml(c.anchorQuote)}</div>` : ""}
+          <div>${escapeHtml(c.body)}</div>
+        `;
+        if (c.origin === "reviewer" && c.status === "open") {
+          const row = document.createElement("div");
+          row.className = "row";
+          const resolve = document.createElement("button");
+          resolve.textContent = "Resolve";
+          resolve.onclick = async () => {
+            await api("resolve-comment", "POST", { commentId: c.id });
+            await refresh();
+          };
+          row.append(resolve);
+          card.append(row);
+        }
+        return card;
+      }
+
+      async function refresh() {
+        const state = await api("state", "GET");
+        document.getElementById("title").textContent =
+          state.title || "Living Doc";
+        const suggestions = document.getElementById("suggestions");
+        suggestions.innerHTML = "";
+        if (state.pendingSuggestions.length === 0) {
+          suggestions.innerHTML =
+            '<div class="empty">No pending suggestions.</div>';
+        } else {
+          state.pendingSuggestions.forEach((s) =>
+            suggestions.append(suggestionCard(s)),
+          );
+        }
+        const comments = document.getElementById("comments");
+        comments.innerHTML = "";
+        if (state.comments.length === 0) {
+          comments.innerHTML = '<div class="empty">No comments yet.</div>';
+        } else {
+          state.comments.forEach((c) => comments.append(commentCard(c)));
+        }
+        return state;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      (async () => {
+        try {
+          const state = await refresh();
+          setDocText(state.markdown);
+          setStatus(`Version ${state.versionNumber} · ready`);
+        } catch (error) {
+          setStatus(`Could not load: ${error.message}`);
+        }
+      })();
+    </script>
+  </body>
+</html>

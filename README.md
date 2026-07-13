@@ -92,3 +92,32 @@ pnpm artifacts logout
 Packaging applies built-in safety rules before upload: obvious secret, dependency, cache, and hidden paths are excluded by default, except `.well-known/`; `.gitignore` is not read in v1; symlinks are rejected; and preflight fails before upload if any file exceeds 25 MB, total Artifact size exceeds 100 MB, or the Artifact has more than 1,000 files. Exclusion output is concise by default; add `--verbose` to print excluded paths.
 
 `ARTIFACTS_PUBLIC_BASE_URL` defaults to `https://artifacts.thefocus.ai`; set it only when publishing against a Vercel Preview or another host that serves this app. Published Artifacts are served by the Vercel rewrite from `/a/{opaque}` and nested `/a/{opaque}/{path}` URLs to the API functions with `Cache-Control: no-store` and `X-Robots-Tag: noindex, nofollow` headers.
+
+## Living Docs
+
+A **Living Doc** is a collaborative Markdown document an agent publishes so a human can edit it and comment on it, then the agent pulls that feedback back to continue the work. Unlike a Publication (read-only, static), a Living Doc is mutable and two-party. See [docs/adr/0005-living-docs-agent-human-review-loop.md](docs/adr/0005-living-docs-agent-human-review-loop.md) for the design and [CONTEXT.md](CONTEXT.md) for the vocabulary.
+
+Publishing a Living Doc returns two URLs: a read-only **View Link** (`/d/{opaque}`) and a capability **Review Link** (`/r/{review}`). Hand the Review Link to whoever should give feedback — no login required. They edit the Markdown and leave span-anchored Comments in a CodeMirror editor; edits autosave continuously.
+
+The agent drives the loop through `artifacts doc` subcommands, which print JSON:
+
+```bash
+# Publish a Markdown file; prints { opaqueId, reviewId, viewUrl, reviewUrl, title }
+THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
+fnox exec -- pnpm artifacts doc publish ./proposal.md --title "Proposal"
+
+# Pull feedback. Cuts an immutable Version and prints the current Markdown,
+# a diff versus the previous Version, and open reviewer Comments.
+pnpm artifacts doc pull https://artifacts.thefocus.ai/d/Ab3xY9kQ
+
+# Respond with span-anchored Suggestions and replies to Comments.
+# Body JSON: { "suggestions": [{ "anchorQuote": "...", "replacement": "...", "note": "..." }],
+#             "replies": [{ "parentCommentId": "...", "body": "..." }] }
+pnpm artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ --body feedback.json
+cat feedback.json | pnpm artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ
+
+# List your Living Docs
+pnpm artifacts doc list
+```
+
+Suggestions are never applied automatically — the Reviewer accepts or rejects each one in the editor, and accepting applies the change to the live Markdown. Each `doc pull` advances the Version number so both sides can refer back to "as of Version 3." Living Docs require `migrations/0005_create_living_docs.sql`.

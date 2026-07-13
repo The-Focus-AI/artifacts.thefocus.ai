@@ -38,6 +38,32 @@ export async function servePublicationNodeRequest(
   await writeWebResponseToNodeResponse(response, nodeResponse);
 }
 
+export async function nodeRequestToWebRequest(
+  request: IncomingMessage,
+): Promise<Request> {
+  const body = await readNodeRequestBody(request);
+  return new Request(nodeRequestUrl(request), {
+    method: request.method,
+    headers: request.headers as HeadersInit,
+    body: body.length > 0 ? new Uint8Array(body) : undefined,
+  });
+}
+
+export function nodeRequestUrl(request: IncomingMessage): string {
+  const host = request.headers.host ?? "localhost";
+  const protocol = request.headers["x-forwarded-proto"] ?? "https";
+  return `${protocol}://${host}${request.url ?? "/"}`;
+}
+
+function readNodeRequestBody(request: IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    request.on("end", () => resolve(Buffer.concat(chunks)));
+    request.on("error", reject);
+  });
+}
+
 export function publicationRequestUrl(request: IncomingMessage): string {
   const host = request.headers.host ?? "localhost";
   const protocol = request.headers["x-forwarded-proto"] ?? "https";

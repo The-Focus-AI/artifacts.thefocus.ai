@@ -32,7 +32,7 @@ a concept the glossary deliberately defines as read-only static output.
 
 - **Round-trip mechanism — agent pulls on demand.** Chosen over a server-push/webhook model
   and over full live co-editing (CRDT). An "LLM request" is ephemeral, so feedback must be
-  routed into a *new* agent turn; making the agent fetch on its next run matches how agents
+  routed into a _new_ agent turn; making the agent fetch on its next run matches how agents
   actually execute and needs no live/wakeable endpoint. Push and CRDT can come later without
   changing the data model.
 - **Reviewer access — a separate capability Review Link, pseudonymous.** Chosen over
