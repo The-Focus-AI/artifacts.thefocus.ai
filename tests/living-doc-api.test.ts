@@ -125,6 +125,32 @@ describe("Living Doc agent API", () => {
     expect(json.markdown).toContain("Visible");
   });
 
+  it("removes a Living Doc over the API and the view goes 404", async () => {
+    const { agent, store, token } = await setup();
+    const published = (await (
+      await agent(
+        post("https://x/api/doc?action=publish", token, {
+          markdown: "# Temp",
+        }),
+      )
+    ).json()) as { opaqueId: string };
+
+    const removed = (await (
+      await agent(
+        post("https://x/api/doc?action=remove", token, {
+          opaqueId: published.opaqueId,
+        }),
+      )
+    ).json()) as { status: string };
+    expect(removed.status).toBe("removed");
+
+    const view = await serveLivingDocViewRequest({
+      request: new Request(`https://x/d/${published.opaqueId}`),
+      store,
+    });
+    expect(view.status).toBe(404);
+  });
+
   it("returns 404 for an unknown Living Doc view", async () => {
     const { store } = await setup();
     const response = await serveLivingDocViewRequest({

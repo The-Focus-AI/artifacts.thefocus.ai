@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import type {
   PublishLivingDocResult,
   PullLivingDocResult,
+  RemoveLivingDocResult,
   RespondLivingDocResult,
   RespondReplyInput,
   RespondSuggestionInput,
@@ -134,6 +135,7 @@ export interface LivingDocApiClient {
     },
   ): Promise<RespondLivingDocResult>;
   listDocs(token: string): Promise<LivingDoc[]>;
+  removeDoc(token: string, opaqueId: string): Promise<RemoveLivingDocResult>;
 }
 
 export class HttpLivingDocApiClient implements LivingDocApiClient {
@@ -184,6 +186,18 @@ export class HttpLivingDocApiClient implements LivingDocApiClient {
     const response = await this.request("/api/doc?action=list", token);
     const body = (await response.json()) as { livingDocs: LivingDoc[] };
     return body.livingDocs;
+  }
+
+  async removeDoc(
+    token: string,
+    opaqueId: string,
+  ): Promise<RemoveLivingDocResult> {
+    const response = await this.request("/api/doc?action=remove", token, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ opaqueId }),
+    });
+    return (await response.json()) as RemoveLivingDocResult;
   }
 
   private async request(

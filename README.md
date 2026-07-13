@@ -118,6 +118,9 @@ cat feedback.json | pnpm artifacts doc respond https://artifacts.thefocus.ai/d/A
 
 # List your Living Docs
 pnpm artifacts doc list
+
+# Remove a Living Doc (disables both the View Link and the Review Link)
+pnpm artifacts doc remove https://artifacts.thefocus.ai/d/Ab3xY9kQ --yes
 ```
 
-Suggestions are never applied automatically — the Reviewer accepts or rejects each one in the editor, and accepting applies the change to the live Markdown. Each `doc pull` advances the Version number so both sides can refer back to "as of Version 3." Living Docs require `migrations/0005_create_living_docs.sql`.
+Suggestions are never applied automatically — the Reviewer accepts or rejects each one in the editor, and accepting applies the change to the live Markdown. Each `doc pull` advances the Version number so both sides can refer back to "as of Version 3." Because the review surface is reachable by anyone holding the Review Link, all inputs are size-capped server-side (2 MB for the Markdown, 64 KB for comments, suggestion text, and replies). Living Docs require `migrations/0005_create_living_docs.sql`.

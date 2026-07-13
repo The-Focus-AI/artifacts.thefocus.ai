@@ -5,8 +5,10 @@ import {
   decideSuggestion,
   getReviewState,
   InMemoryLivingDocMetadataStore,
+  maxLivingDocTextBytes,
   publishLivingDoc,
   pullLivingDocFeedback,
+  removeLivingDoc,
   resolveReviewerComment,
   respondToLivingDoc,
   saveReviewMarkdown,
@@ -191,5 +193,61 @@ describe("Living Doc round-trip", () => {
         store,
       }),
     ).rejects.toThrow(/another Publisher/);
+  });
+
+  it("removal disables both the Review Link and further agent pulls", async () => {
+    const store = new InMemoryLivingDocMetadataStore();
+    await publish(store, "to be removed");
+
+    const removed = await removeLivingDoc({
+      opaqueId: "docOpaque1",
+      publisherEmail,
+      store,
+    });
+    expect(removed.status).toBe("removed");
+
+    await expect(getReviewState(store, "reviewSecret1")).rejects.toThrow(
+      /not found/,
+    );
+    await expect(
+      pullLivingDocFeedback({ opaqueId: "docOpaque1", publisherEmail, store }),
+    ).rejects.toThrow(/not found/);
+
+    const again = await removeLivingDoc({
+      opaqueId: "docOpaque1",
+      publisherEmail,
+      store,
+    });
+    expect(again.status).toBe("not-found");
+  });
+
+  it("refuses removal by another Publisher", async () => {
+    const store = new InMemoryLivingDocMetadataStore();
+    await publish(store, "mine");
+    await expect(
+      removeLivingDoc({
+        opaqueId: "docOpaque1",
+        publisherEmail: "intruder@thefocus.ai",
+        store,
+      }),
+    ).rejects.toThrow(/another Publisher/);
+  });
+
+  it("caps Reviewer input sizes on the unauthenticated review surface", async () => {
+    const store = new InMemoryLivingDocMetadataStore();
+    await publish(store, "small");
+
+    const oversizedMarkdown = "x".repeat(2 * 1024 * 1024 + 1);
+    await expect(
+      saveReviewMarkdown(store, "reviewSecret1", oversizedMarkdown),
+    ).rejects.toThrow(/2 MB limit/);
+
+    const oversizedComment = "y".repeat(maxLivingDocTextBytes + 1);
+    await expect(
+      addReviewerComment(store, "reviewSecret1", {
+        anchorQuote: "small",
+        body: oversizedComment,
+      }),
+    ).rejects.toThrow(/64 KB limit/);
   });
 });
