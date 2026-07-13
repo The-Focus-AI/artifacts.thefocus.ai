@@ -47,3 +47,31 @@ _Avoid_: Project, repository, folder mapping
 **Title**:
 A human-readable name for a Publication, either extracted from the `<title>` tag in the entry HTML or supplied explicitly via `--title` at publish time. Titles are shown in `artifacts list`.
 _Avoid_: name, label (use Title)
+
+**Living Doc**:
+A collaborative Markdown document an agent publishes so a human can edit it and comment on it, and the agent can pull that feedback back to continue the work. Unlike a Publication, a Living Doc is mutable and two-party: it is edited continuously on the human side and revised by the agent through Suggestions. A Living Doc is a distinct concept from a Publication and is never a read-only static Artifact.
+_Avoid_: Document, page, review, draft, artifact, publication
+
+**Reviewer**:
+The pseudonymous human who edits and comments on a Living Doc by holding its Review Link. A Reviewer is not authenticated and is not a Publisher; they may supply a display name, otherwise their contributions are attributed to "a Reviewer".
+_Avoid_: User, editor, collaborator, guest, commenter
+
+**View Link**:
+The read-only URL for a Living Doc that renders its current Markdown. Holding a View Link never grants the ability to edit or comment.
+_Avoid_: Public link, share link, read link
+
+**Review Link**:
+The capability URL for a Living Doc that grants editing and commenting. Anyone holding the Review Link is a Reviewer; it is a separate, more privileged URL than the View Link and is handed only to those meant to give feedback.
+_Avoid_: Edit link, invite, magic link, token
+
+**Version**:
+An immutable snapshot of a Living Doc's Markdown captured at the moment an agent pulls feedback. Versions are numbered in order and give both the agent and the Reviewer a stable reference point ("as of Version 3") even though editing is otherwise continuous.
+_Avoid_: Revision, commit, snapshot (use Version), Revision Window (that is a Publication concept)
+
+**Comment**:
+A note a Reviewer attaches to a specific span of a Living Doc's Markdown. A Comment carries the quoted span it is anchored to so the agent knows exactly what it refers to. Comments stay open until resolved.
+_Avoid_: Annotation, note, review comment
+
+**Suggestion**:
+A change to a specific span of a Living Doc that an agent proposes in response to feedback. A Suggestion is never applied automatically; the Reviewer accepts or rejects it. Suggestions are how the agent edits a Living Doc, mirroring the Reviewer's direct edits.
+_Avoid_: Edit, patch, diff, tracked change, proposal
