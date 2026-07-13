@@ -18,6 +18,23 @@ import {
 export const livingDocViewPrefix = "/d";
 export const livingDocReviewPrefix = "/r";
 
+// The review endpoints are reachable by anyone holding a Review Link, so all
+// text inputs are size-capped server-side.
+export const maxLivingDocMarkdownBytes = 2 * 1024 * 1024;
+export const maxLivingDocTextBytes = 64 * 1024;
+
+function assertMarkdownWithinLimit(markdown: string): void {
+  if (Buffer.byteLength(markdown, "utf8") > maxLivingDocMarkdownBytes) {
+    throw new Error("Living Doc Markdown exceeds the 2 MB limit.");
+  }
+}
+
+function assertTextWithinLimit(text: string, label: string): void {
+  if (Buffer.byteLength(text, "utf8") > maxLivingDocTextBytes) {
+    throw new Error(`${label} exceeds the 64 KB limit.`);
+  }
+}
+
 export interface PublishLivingDocInput {
   markdown: string;
   publisherEmail: string;
@@ -39,6 +56,7 @@ export interface PublishLivingDocResult {
 export async function publishLivingDoc(
   input: PublishLivingDocInput,
 ): Promise<PublishLivingDocResult> {
+  assertMarkdownWithinLimit(input.markdown);
   const opaqueId = input.opaqueId ?? createOpaqueId();
   const reviewId = input.reviewId ?? createReviewId();
   const doc = await input.store.create({
@@ -185,6 +203,10 @@ export async function respondToLivingDoc(
     if (!suggestion.anchorQuote) {
       throw new Error("Each Suggestion requires an anchorQuote.");
     }
+    assertTextWithinLimit(suggestion.anchorQuote, "Suggestion anchor");
+    assertTextWithinLimit(suggestion.replacement, "Suggestion replacement");
+    if (suggestion.note)
+      assertTextWithinLimit(suggestion.note, "Suggestion note");
     createdSuggestions.push(
       await input.store.addSuggestion({
         id: randomUUID(),
@@ -205,6 +227,7 @@ export async function respondToLivingDoc(
     if (!parent) {
       throw new Error(`Unknown parent Comment: ${reply.parentCommentId}`);
     }
+    assertTextWithinLimit(reply.body, "Reply body");
     createdReplies.push(
       await input.store.addComment({
         id: randomUUID(),
@@ -225,6 +248,35 @@ export async function respondToLivingDoc(
     createdSuggestions: createdSuggestions.map(toPulledSuggestion),
     createdReplies: createdReplies.map(toPulledComment),
   };
+}
+
+export interface RemoveLivingDocInput {
+  opaqueId: string;
+  publisherEmail: string;
+  store: LivingDocMetadataStore;
+}
+
+export interface RemoveLivingDocResult {
+  opaqueId: string;
+  status: "removed" | "not-found";
+}
+
+/**
+ * Removal disables the Living Doc: the View Link and Review Link both stop
+ * serving it. This is the kill switch for a leaked Review Link.
+ */
+export async function removeLivingDoc(
+  input: RemoveLivingDocInput,
+): Promise<RemoveLivingDocResult> {
+  const doc = await input.store.getByOpaqueId(input.opaqueId);
+  if (!doc || doc.status !== "active") {
+    return { opaqueId: input.opaqueId, status: "not-found" };
+  }
+  if (doc.publisherEmail !== input.publisherEmail) {
+    throw new Error("This Living Doc belongs to another Publisher.");
+  }
+  await input.store.markRemoved(input.opaqueId);
+  return { opaqueId: input.opaqueId, status: "removed" };
 }
 
 // --- Reviewer-side operations (authorized by holding the Review Link) --------
@@ -260,6 +312,7 @@ export async function saveReviewMarkdown(
   reviewId: string,
   markdown: string,
 ): Promise<LivingDoc> {
+  assertMarkdownWithinLimit(markdown);
   const doc = await requireActiveDocByReviewId(store, reviewId);
   const updated = await store.updateMarkdown(doc.opaqueId, markdown);
   if (!updated) throw new Error("Living Doc could not be updated.");
@@ -281,6 +334,8 @@ export async function addReviewerComment(
 ): Promise<LivingDocComment> {
   const doc = await requireActiveDocByReviewId(store, reviewId);
   if (!input.body) throw new Error("A Comment requires a body.");
+  assertTextWithinLimit(input.body, "Comment body");
+  assertTextWithinLimit(input.anchorQuote, "Comment anchor");
   return store.addComment({
     id: randomUUID(),
     livingDocId: doc.opaqueId,
@@ -467,6 +522,19 @@ export async function handleLivingDocAgentApiRequest({
           store,
           suggestions: body.suggestions,
           replies: body.replies,
+        }),
+      );
+    }
+
+    if (request.method === "POST" && action === "remove") {
+      const body = (await request.json()) as { opaqueId?: string };
+      if (!body.opaqueId)
+        return jsonResponse({ error: "opaqueId is required" }, 400);
+      return jsonResponse(
+        await removeLivingDoc({
+          opaqueId: body.opaqueId,
+          publisherEmail,
+          store,
         }),
       );
     }

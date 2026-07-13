@@ -359,8 +359,26 @@ async function runDocCommand(
     return 0;
   }
 
+  if (subcommand === "remove") {
+    if (!target)
+      throw new Error("doc remove requires a Living Doc View URL or id.");
+    if (!Object.hasOwn(options, "yes")) {
+      const confirmed = await confirmRemoval(target, context.stdin, stdout);
+      if (!confirmed) {
+        stdout.write("Removal cancelled.\n");
+        return 1;
+      }
+    }
+    const result = await client.removeDoc(
+      token.token,
+      opaqueIdFromViewReference(target),
+    );
+    stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  }
+
   throw new Error(
-    "Usage: artifacts doc <publish <file.md>|pull <url>|respond <url>|list>",
+    "Usage: artifacts doc <publish <file.md>|pull <url>|respond <url>|list|remove <url>>",
   );
 }
 
@@ -512,7 +530,8 @@ function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
       '  npx @the-focus-ai/artifacts doc publish <file.md> [--title "My Doc"] [--base-url ...]\n' +
       "  npx @the-focus-ai/artifacts doc pull <Living Doc View URL or id> [--base-url ...]\n" +
       "  npx @the-focus-ai/artifacts doc respond <Living Doc View URL or id> [--body feedback.json] [--base-url ...]\n" +
-      "  npx @the-focus-ai/artifacts doc list [--base-url ...]\n",
+      "  npx @the-focus-ai/artifacts doc list [--base-url ...]\n" +
+      "  npx @the-focus-ai/artifacts doc remove <Living Doc View URL or id> [--yes] [--base-url ...]\n",
   );
 }
 
