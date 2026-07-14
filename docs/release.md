@@ -15,7 +15,7 @@ pnpm pack --dry-run
 
 Review the `pnpm pack --dry-run` file list. It should contain the built `dist/src` CLI modules and README/license metadata only; it should not include `.fnox`, `.vercel`, tests, reports, local state, or source-only files.
 
-Preferred publishing is the `Publish npm package` GitHub Actions workflow using npm Trusted Publishing with OIDC/provenance rather than committing or storing a long-lived npm token. Before the first workflow publish, configure npm so package `@the-focus-ai/artifacts` trusts this repository/workflow (`.github/workflows/npm-publish.yml`) and make sure the GitHub `npm` environment has the intended reviewers.
+Preferred publishing is the `Publish npm package` GitHub Actions workflow using npm Trusted Publishing with OIDC/provenance rather than committing or storing a long-lived npm token. Before the first workflow publish, configure npm so package `@the-focus-ai/artifacts` trusts this repository/workflow, and make sure the GitHub `npm` environment has the intended reviewers. The trusted publisher's workflow filename must be exactly `publish.yml` — npm matches it literally, and a `.yaml`/`.yml` mismatch fails the publish with `ENEEDAUTH`.
 
 To publish through GitHub, update `package.json` to the intended version, merge that commit to `main`, then push a matching `vX.Y.Z` tag. The workflow refuses to publish if the pushed tag does not match `package.json` exactly:
 
