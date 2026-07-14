@@ -1,5 +1,13 @@
 import { basename } from "node:path";
 
+import type {
+  PublishLivingDocResult,
+  PullLivingDocResult,
+  RemoveLivingDocResult,
+  RespondLivingDocResult,
+  RespondReplyInput,
+  RespondSuggestionInput,
+} from "./living-doc.js";
 import {
   defaultPublicBaseUrl,
   prepareArtifactUpload,
@@ -8,6 +16,7 @@ import {
   type PublishArtifactResult,
   type RemovePublicationResult,
 } from "./publication.js";
+import type { LivingDoc } from "./storage/living-doc-metadata.js";
 import type { PublicationMetadata } from "./storage/publication-metadata.js";
 
 export interface ArtifactApiClient {
@@ -104,6 +113,109 @@ export class HttpArtifactApiClient implements ArtifactApiClient {
       const text = await response.text();
       throw new Error(
         text || `Artifacts API request failed: ${response.status}`,
+      );
+    }
+    return response;
+  }
+}
+
+export interface LivingDocApiClient {
+  publishDoc(
+    token: string,
+    markdown: string,
+    options?: { title?: string },
+  ): Promise<PublishLivingDocResult>;
+  pullDoc(token: string, opaqueId: string): Promise<PullLivingDocResult>;
+  respondDoc(
+    token: string,
+    opaqueId: string,
+    body: {
+      suggestions?: RespondSuggestionInput[];
+      replies?: RespondReplyInput[];
+    },
+  ): Promise<RespondLivingDocResult>;
+  listDocs(token: string): Promise<LivingDoc[]>;
+  removeDoc(token: string, opaqueId: string): Promise<RemoveLivingDocResult>;
+}
+
+export class HttpLivingDocApiClient implements LivingDocApiClient {
+  constructor(
+    private readonly publicBaseUrl: string = defaultPublicBaseUrl,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {}
+
+  async publishDoc(
+    token: string,
+    markdown: string,
+    options: { title?: string } = {},
+  ): Promise<PublishLivingDocResult> {
+    const response = await this.request("/api/doc?action=publish", token, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ markdown, title: options.title }),
+    });
+    return (await response.json()) as PublishLivingDocResult;
+  }
+
+  async pullDoc(token: string, opaqueId: string): Promise<PullLivingDocResult> {
+    const response = await this.request("/api/doc?action=pull", token, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ opaqueId }),
+    });
+    return (await response.json()) as PullLivingDocResult;
+  }
+
+  async respondDoc(
+    token: string,
+    opaqueId: string,
+    body: {
+      suggestions?: RespondSuggestionInput[];
+      replies?: RespondReplyInput[];
+    },
+  ): Promise<RespondLivingDocResult> {
+    const response = await this.request("/api/doc?action=respond", token, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ opaqueId, ...body }),
+    });
+    return (await response.json()) as RespondLivingDocResult;
+  }
+
+  async listDocs(token: string): Promise<LivingDoc[]> {
+    const response = await this.request("/api/doc?action=list", token);
+    const body = (await response.json()) as { livingDocs: LivingDoc[] };
+    return body.livingDocs;
+  }
+
+  async removeDoc(
+    token: string,
+    opaqueId: string,
+  ): Promise<RemoveLivingDocResult> {
+    const response = await this.request("/api/doc?action=remove", token, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ opaqueId }),
+    });
+    return (await response.json()) as RemoveLivingDocResult;
+  }
+
+  private async request(
+    path: string,
+    token: string,
+    init: RequestInit = {},
+  ): Promise<Response> {
+    const response = await this.fetchImpl(new URL(path, this.publicBaseUrl), {
+      ...init,
+      headers: {
+        ...(init.headers ?? {}),
+        authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        text || `Living Doc API request failed: ${response.status}`,
       );
     }
     return response;

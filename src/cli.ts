@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { realpathSync } from "node:fs";
-import { realpath, writeFile, mkdir } from "node:fs/promises";
+import { readFile, realpath, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
@@ -29,7 +29,17 @@ import {
   removePublicationSummary,
   type RemovePublicationResult,
 } from "./publication.js";
-import { HttpArtifactApiClient, type ArtifactApiClient } from "./remote-api.js";
+import {
+  opaqueIdFromViewReference,
+  type RespondReplyInput,
+  type RespondSuggestionInput,
+} from "./living-doc.js";
+import {
+  HttpArtifactApiClient,
+  HttpLivingDocApiClient,
+  type ArtifactApiClient,
+  type LivingDocApiClient,
+} from "./remote-api.js";
 import {
   createNeonPublicationMetadataStore,
   type PublicationMetadataStore,
@@ -42,6 +52,7 @@ export interface CliDependencies {
   tokenStore?: PublisherTokenStore;
   metadataStore?: PublicationMetadataStore;
   apiClient?: ArtifactApiClient;
+  docApiClient?: LivingDocApiClient;
   configDir?: string;
   openBrowser?: (url: string) => Promise<void>;
   stdin?: NodeJS.ReadStream;
@@ -258,12 +269,117 @@ export async function runCli(
       return 0;
     }
 
+    if (command === "doc") {
+      return await runDocCommand(firstArg, flags[0], {
+        env,
+        configDir,
+        options,
+        stdout,
+        stderr,
+        stdin: dependencies.stdin ?? process.stdin,
+        docApiClient: dependencies.docApiClient,
+      });
+    }
+
     printUsage(stderr);
     return 1;
   } catch (error) {
     stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
   }
+}
+
+async function runDocCommand(
+  subcommand: string | undefined,
+  target: string | undefined,
+  context: {
+    env: NodeJS.ProcessEnv;
+    configDir: string;
+    options: Record<string, string | undefined>;
+    stdout: Pick<NodeJS.WriteStream, "write">;
+    stderr: Pick<NodeJS.WriteStream, "write">;
+    stdin: NodeJS.ReadStream;
+    docApiClient?: LivingDocApiClient;
+  },
+): Promise<number> {
+  const { env, configDir, options, stdout } = context;
+  const token = await resolvePublisherToken({ env, configDir });
+  if (!token.token) throw new Error("A valid Publisher Token is required");
+  const client =
+    context.docApiClient ??
+    new HttpLivingDocApiClient(
+      options["base-url"] ??
+        env.ARTIFACTS_PUBLIC_BASE_URL ??
+        defaultPublicBaseUrl,
+    );
+
+  if (subcommand === "publish") {
+    if (!target) throw new Error("doc publish requires a Markdown file path.");
+    const markdown = await readFile(target, "utf-8");
+    const result = await client.publishDoc(token.token, markdown, {
+      title: options.title,
+    });
+    stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  }
+
+  if (subcommand === "pull") {
+    if (!target)
+      throw new Error("doc pull requires a Living Doc View URL or id.");
+    const result = await client.pullDoc(
+      token.token,
+      opaqueIdFromViewReference(target),
+    );
+    stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  }
+
+  if (subcommand === "respond") {
+    if (!target)
+      throw new Error("doc respond requires a Living Doc View URL or id.");
+    const raw = options.body
+      ? await readFile(options.body, "utf-8")
+      : await readStdin(context.stdin);
+    const parsed = JSON.parse(raw || "{}") as {
+      suggestions?: RespondSuggestionInput[];
+      replies?: RespondReplyInput[];
+    };
+    const result = await client.respondDoc(
+      token.token,
+      opaqueIdFromViewReference(target),
+      { suggestions: parsed.suggestions, replies: parsed.replies },
+    );
+    stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  }
+
+  if (subcommand === "list") {
+    const result = await client.listDocs(token.token);
+    stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  }
+
+  if (subcommand === "remove") {
+    if (!target)
+      throw new Error("doc remove requires a Living Doc View URL or id.");
+    if (!Object.hasOwn(options, "yes")) {
+      const confirmed = await confirmRemoval(target, context.stdin, stdout);
+      if (!confirmed) {
+        stdout.write("Removal cancelled.\n");
+        return 1;
+      }
+    }
+    const result = await client.removeDoc(
+      token.token,
+      opaqueIdFromViewReference(target),
+    );
+    stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  }
+
+  throw new Error(
+    "Usage: artifacts doc <publish <file.md>|pull <url>|respond <url>|list|remove <url>>",
+  );
 }
 
 async function publishWithDefaultApiClient(
@@ -404,13 +520,18 @@ function readStdin(stream: NodeJS.ReadableStream): Promise<string> {
 
 function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
   output.write(
-    "Usage: npx @the-focus-ai/artifacts <login|logout|whoami|publish|remove|list>\n" +
+    "Usage: npx @the-focus-ai/artifacts <login|logout|whoami|publish|remove|list|doc>\n" +
       "  npx @the-focus-ai/artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
       '  npx @the-focus-ai/artifacts publish <file.html|directory> [--entry-page index.html] [--title "My Report"] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose] [--open]\n' +
       "  npx @the-focus-ai/artifacts remove <Publication URL> [--yes] [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts list [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts whoami [--base-url https://artifacts.thefocus.ai]\n" +
-      "  npx @the-focus-ai/artifacts logout\n",
+      "  npx @the-focus-ai/artifacts logout\n" +
+      '  npx @the-focus-ai/artifacts doc publish <file.md> [--title "My Doc"] [--base-url ...]\n' +
+      "  npx @the-focus-ai/artifacts doc pull <Living Doc View URL or id> [--base-url ...]\n" +
+      "  npx @the-focus-ai/artifacts doc respond <Living Doc View URL or id> [--body feedback.json] [--base-url ...]\n" +
+      "  npx @the-focus-ai/artifacts doc list [--base-url ...]\n" +
+      "  npx @the-focus-ai/artifacts doc remove <Living Doc View URL or id> [--yes] [--base-url ...]\n",
   );
 }
 

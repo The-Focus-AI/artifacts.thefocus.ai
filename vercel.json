@@ -66,6 +66,22 @@
     {
       "source": "/a/:opaque/:path*",
       "destination": "/api/a/:opaque?path=:path*"
+    },
+    {
+      "source": "/d/:opaque",
+      "destination": "/api/d/:opaque"
+    },
+    {
+      "source": "/d/:opaque/",
+      "destination": "/api/d/:opaque"
+    },
+    {
+      "source": "/r/:review",
+      "destination": "/review.html"
+    },
+    {
+      "source": "/r/:review/",
+      "destination": "/review.html"
     }
   ]
 }
