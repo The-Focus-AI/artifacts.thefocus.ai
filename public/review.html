@@ -57,7 +57,7 @@
       }
       .layout {
         display: grid;
-        grid-template-columns: 1fr 1fr 20rem;
+        grid-template-columns: 1fr 22rem;
         height: calc(100vh - 3.25rem);
       }
       @media (max-width: 60rem) {
@@ -73,6 +73,7 @@
       .pane-head {
         position: sticky;
         top: 0;
+        z-index: 1;
         background: var(--bg);
         padding: 0.5rem 0.9rem;
         font-size: 0.72rem;
@@ -84,20 +85,47 @@
         gap: 0.5rem;
         align-items: center;
       }
-      .cm-editor {
-        height: 100%;
-        font-size: 14px;
+      #editor {
+        max-width: 46rem;
+        margin: 0 auto;
+        padding: 1.5rem 1.5rem 6rem;
       }
-      #preview {
-        padding: 1rem 1.25rem;
+      .ProseMirror {
+        outline: none;
+        min-height: 60vh;
+        font-size: 16px;
+        line-height: 1.6;
       }
-      #preview pre {
+      .ProseMirror h1 {
+        font-size: 1.7rem;
+        line-height: 1.25;
+      }
+      .ProseMirror h2 {
+        font-size: 1.3rem;
+      }
+      .ProseMirror pre {
         overflow-x: auto;
         background: var(--panel);
         padding: 0.75rem;
         border-radius: 6px;
+        font-size: 0.88em;
       }
-      #preview img {
+      .ProseMirror code {
+        background: var(--panel);
+        border-radius: 4px;
+        padding: 0.1em 0.3em;
+      }
+      .ProseMirror pre code {
+        background: none;
+        padding: 0;
+      }
+      .ProseMirror blockquote {
+        border-left: 3px solid var(--border);
+        margin-left: 0;
+        padding-left: 1rem;
+        color: var(--muted);
+      }
+      .ProseMirror img {
         max-width: 100%;
       }
       .sidebar {
@@ -168,10 +196,53 @@
         letter-spacing: 0.05em;
         color: var(--muted);
       }
-      textarea.comment-input {
-        width: calc(100% - 1.4rem);
-        margin: 0.5rem 0.7rem;
-        min-height: 3rem;
+      .suggest-del {
+        background: rgba(220, 38, 38, 0.12);
+        text-decoration: line-through;
+        text-decoration-color: var(--remove);
+      }
+      .suggest-widget {
+        background: rgba(22, 163, 74, 0.12);
+        border-radius: 4px;
+        padding: 0 0.15rem;
+        margin-left: 0.2rem;
+        white-space: pre-wrap;
+      }
+      .suggest-widget .suggest-ins {
+        color: var(--add);
+      }
+      .suggest-widget button {
+        border: none;
+        background: none;
+        padding: 0 0.2rem;
+        font-size: 0.85em;
+        cursor: pointer;
+      }
+      .suggest-widget button:hover {
+        opacity: 0.7;
+      }
+      #comment-bubble {
+        position: fixed;
+        z-index: 20;
+        display: none;
+      }
+      #comment-bubble button {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      }
+      #comment-popover {
+        position: fixed;
+        z-index: 21;
+        display: none;
+        width: 18rem;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        border-radius: 8px;
+        padding: 0.6rem;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+      }
+      #comment-popover textarea {
+        width: 100%;
+        min-height: 3.5rem;
         border: 1px solid var(--border);
         border-radius: 6px;
         background: var(--bg);
@@ -179,6 +250,11 @@
         padding: 0.4rem;
         font: inherit;
         resize: vertical;
+      }
+      #comment-popover .row {
+        display: flex;
+        gap: 0.4rem;
+        margin-top: 0.5rem;
       }
     </style>
   </head>
@@ -189,55 +265,53 @@
     </header>
     <div class="layout">
       <div class="pane" id="editor-pane">
-        <div class="pane-head">
-          Markdown
-          <button id="comment-btn" title="Comment on the selected text">
-            Comment on selection
-          </button>
-        </div>
+        <div class="pane-head">Document</div>
         <div id="editor"></div>
-      </div>
-      <div class="pane">
-        <div class="pane-head">Preview</div>
-        <article id="preview"></article>
       </div>
       <div class="pane sidebar">
         <div class="pane-head">Feedback</div>
         <div class="section-title">Agent suggestions</div>
         <div id="suggestions"></div>
         <div class="section-title">Comments</div>
-        <textarea
-          class="comment-input"
-          id="comment-input"
-          placeholder="Select text in the editor, then write a comment here and press Comment on selection."
-        ></textarea>
+        <div class="empty" id="comment-hint">
+          Select text in the document to add a comment.
+        </div>
         <div id="comments"></div>
+      </div>
+    </div>
+
+    <div id="comment-bubble">
+      <button class="primary" title="Comment on the selected text">
+        💬 Comment
+      </button>
+    </div>
+    <div id="comment-popover">
+      <textarea id="popover-input" placeholder="Write a comment…"></textarea>
+      <div class="row">
+        <button class="primary" id="popover-submit">Comment</button>
+        <button id="popover-cancel">Cancel</button>
       </div>
     </div>
 
     <script type="module">
       import {
-        EditorView,
-        basicSetup,
-        markdown,
-        EditorState,
-        MarkdownIt,
+        Editor,
+        StarterKit,
+        Markdown,
+        Plugin,
+        PluginKey,
+        Decoration,
+        DecorationSet,
       } from "/vendor/review-editor.js";
 
       const reviewId = location.pathname.split("/").filter(Boolean)[1] ?? "";
-      const md = new MarkdownIt({ html: false, linkify: true });
       const statusEl = document.getElementById("status");
-      const previewEl = document.getElementById("preview");
 
       let saveTimer = null;
       let applyingRemote = false;
 
       function setStatus(text) {
         statusEl.textContent = text;
-      }
-
-      function renderPreview(text) {
-        previewEl.innerHTML = md.render(text || "");
       }
 
       async function api(action, method, body) {
@@ -260,7 +334,9 @@
         setStatus("Editing…");
         saveTimer = setTimeout(async () => {
           try {
-            await api("save", "POST", { markdown: view.state.doc.toString() });
+            await api("save", "POST", {
+              markdown: editor.storage.markdown.getMarkdown(),
+            });
             setStatus("Saved");
           } catch (error) {
             setStatus(`Save failed: ${error.message}`);
@@ -268,62 +344,184 @@
         }, 700);
       }
 
-      const view = new EditorView({
-        parent: document.getElementById("editor"),
-        state: EditorState.create({
-          doc: "",
-          extensions: [
-            basicSetup,
-            markdown(),
-            EditorView.lineWrapping,
-            EditorView.updateListener.of((update) => {
-              if (update.docChanged) {
-                renderPreview(update.state.doc.toString());
-                if (!applyingRemote) scheduleSave();
-              }
-            }),
-          ],
-        }),
+      const editor = new Editor({
+        element: document.getElementById("editor"),
+        extensions: [
+          StarterKit,
+          Markdown.configure({ html: false, linkify: true }),
+        ],
+        content: "",
+        onUpdate: () => {
+          if (!applyingRemote) scheduleSave();
+          hideBubble();
+          hidePopover();
+        },
+        onSelectionUpdate: () => {
+          hidePopover();
+          const { from, to, empty } = editor.state.selection;
+          if (empty) {
+            hideBubble();
+            return;
+          }
+          showBubbleAt(from, to);
+        },
       });
 
-      function setDocText(text) {
+      function setDocMarkdown(text) {
         applyingRemote = true;
-        view.dispatch({
-          changes: { from: 0, to: view.state.doc.length, insert: text },
-        });
+        editor.commands.setContent(text, false);
         applyingRemote = false;
-        renderPreview(text);
       }
 
-      document
-        .getElementById("comment-btn")
-        .addEventListener("click", async () => {
-          const sel = view.state.selection.main;
-          const quote = view.state.sliceDoc(sel.from, sel.to);
-          const input = document.getElementById("comment-input");
-          const bodyText = input.value.trim();
-          if (!quote) {
-            setStatus("Select some text to comment on first.");
-            return;
+      // Pending suggestions rendered as inline tracked changes. The anchor
+      // search only handles quotes inside a single text block; anything the
+      // search can't place still shows as a sidebar card.
+      let inlineSuggestions = [];
+
+      function findQuote(doc, quote) {
+        if (!quote || quote.includes("\n")) return null;
+        let result = null;
+        doc.descendants((node, pos) => {
+          if (result) return false;
+          if (!node.isTextblock) return true;
+          const index = node.textContent.indexOf(quote);
+          if (index !== -1) {
+            result = {
+              from: pos + 1 + index,
+              to: pos + 1 + index + quote.length,
+            };
           }
-          if (!bodyText) {
-            setStatus("Write a comment before submitting.");
-            return;
-          }
-          try {
-            await api("comment", "POST", {
-              anchorQuote: quote,
-              anchorStart: sel.from,
-              anchorEnd: sel.to,
-              body: bodyText,
-            });
-            input.value = "";
-            await refresh();
-            setStatus("Comment added");
-          } catch (error) {
-            setStatus(`Comment failed: ${error.message}`);
-          }
+          return false;
         });
+        return result;
+      }
+
+      function suggestWidget(s) {
+        const span = document.createElement("span");
+        span.className = "suggest-widget";
+        span.contentEditable = "false";
+        const ins = document.createElement("span");
+        ins.className = "suggest-ins";
+        ins.textContent = s.replacement;
+        const accept = document.createElement("button");
+        accept.textContent = "✓";
+        accept.title = s.note ? `Accept: ${s.note}` : "Accept this suggestion";
+        accept.onmousedown = (event) => event.preventDefault();
+        accept.onclick = () => decide(s.id, "accepted");
+        const reject = document.createElement("button");
+        reject.textContent = "✕";
+        reject.title = "Reject this suggestion";
+        reject.onmousedown = (event) => event.preventDefault();
+        reject.onclick = () => decide(s.id, "rejected");
+        span.append(ins, accept, reject);
+        return span;
+      }
+
+      editor.registerPlugin(
+        new Plugin({
+          key: new PluginKey("inline-suggestions"),
+          props: {
+            decorations(state) {
+              if (inlineSuggestions.length === 0) return DecorationSet.empty;
+              const decorations = [];
+              for (const s of inlineSuggestions) {
+                const found = findQuote(state.doc, s.anchorQuote);
+                if (!found) continue;
+                decorations.push(
+                  Decoration.inline(found.from, found.to, {
+                    class: "suggest-del",
+                  }),
+                  Decoration.widget(found.to, () => suggestWidget(s), {
+                    side: 1,
+                  }),
+                );
+              }
+              return DecorationSet.create(state.doc, decorations);
+            },
+          },
+        }),
+      );
+
+      const bubble = document.getElementById("comment-bubble");
+      const popover = document.getElementById("comment-popover");
+      const popoverInput = document.getElementById("popover-input");
+      // The selection the popover is commenting on, captured when the bubble
+      // is clicked so focusing the textarea can't lose it.
+      let pendingAnchor = null;
+
+      function selectionCoords(pos) {
+        const coords = editor.view.coordsAtPos(pos);
+        const left = Math.min(coords.left, window.innerWidth - 300);
+        return { top: coords.bottom + 8, left: Math.max(left, 8) };
+      }
+
+      function showBubbleAt(from, to) {
+        const { top, left } = selectionCoords(to);
+        bubble.style.top = `${top}px`;
+        bubble.style.left = `${left}px`;
+        bubble.style.display = "block";
+      }
+
+      function hideBubble() {
+        bubble.style.display = "none";
+      }
+
+      function hidePopover() {
+        popover.style.display = "none";
+        pendingAnchor = null;
+      }
+
+      bubble.addEventListener("mousedown", (event) => {
+        // Keep the editor selection: don't let the button steal focus first.
+        event.preventDefault();
+        const { from, to } = editor.state.selection;
+        // The rendered document's plain text, not markdown source: close
+        // enough for the agent to locate the span, so anchor offsets stay
+        // null rather than pointing at the wrong markdown position.
+        const quote = editor.state.doc.textBetween(from, to, "\n\n");
+        if (!quote) return;
+        pendingAnchor = { quote };
+        const { top, left } = selectionCoords(to);
+        popover.style.top = `${top}px`;
+        popover.style.left = `${left}px`;
+        popover.style.display = "block";
+        hideBubble();
+        popoverInput.value = "";
+        popoverInput.focus();
+      });
+
+      document
+        .getElementById("popover-cancel")
+        .addEventListener("click", hidePopover);
+      popoverInput.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") hidePopover();
+        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+          submitComment();
+        }
+      });
+      document
+        .getElementById("popover-submit")
+        .addEventListener("click", submitComment);
+
+      async function submitComment() {
+        if (!pendingAnchor) return;
+        const bodyText = popoverInput.value.trim();
+        if (!bodyText) {
+          popoverInput.focus();
+          return;
+        }
+        try {
+          await api("comment", "POST", {
+            anchorQuote: pendingAnchor.quote,
+            body: bodyText,
+          });
+          hidePopover();
+          await refresh();
+          setStatus("Comment added");
+        } catch (error) {
+          setStatus(`Comment failed: ${error.message}`);
+        }
+      }
 
       function suggestionCard(s) {
         const card = document.createElement("div");
@@ -355,7 +553,7 @@
           });
           if (decision === "accepted") {
             if (result.applied) {
-              setDocText(result.markdown);
+              setDocMarkdown(result.markdown);
               setStatus(
                 result.occurrenceCount > 1
                   ? `Suggestion applied (the quoted text matched ${result.occurrenceCount} places; used the agent's anchor)`
@@ -405,6 +603,9 @@
         const state = await api("state", "GET");
         document.getElementById("title").textContent =
           state.title || "Living Doc";
+        inlineSuggestions = state.pendingSuggestions;
+        // Repaint decorations against the current document.
+        editor.view.dispatch(editor.state.tr);
         const suggestions = document.getElementById("suggestions");
         suggestions.innerHTML = "";
         if (state.pendingSuggestions.length === 0) {
@@ -435,7 +636,7 @@
       (async () => {
         try {
           const state = await refresh();
-          setDocText(state.markdown);
+          setDocMarkdown(state.markdown);
           setStatus(`Version ${state.versionNumber} · ready`);
         } catch (error) {
           setStatus(`Could not load: ${error.message}`);
