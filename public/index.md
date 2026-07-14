@@ -34,6 +34,24 @@ Share that URL with the user or client. Anyone with the exact URL can view it wi
 - Use `npx @the-focus-ai/artifacts remove <Publication URL> --yes` to remove an accidental Publication.
 - Run `npx @the-focus-ai/artifacts list` to view your Publications (titles are shown).
 
+## Living Docs
+
+When the deliverable is a Markdown document to iterate on with a human — a proposal, spec, or draft — publish it as a Living Doc instead of a static Artifact:
+
+```bash
+npx @the-focus-ai/artifacts doc publish ./proposal.md --title "Proposal"
+```
+
+This prints a read-only View Link (`/d/{id}`) and an editable Review Link (`/r/{id}`). Hand the Review Link to the human: it opens a WYSIWYG editor where they edit the rendered document directly (autosaved) and attach comments to selected text. On your next turn, pull their feedback and respond with span-anchored Suggestions they accept or reject inline:
+
+```bash
+npx @the-focus-ai/artifacts doc pull https://artifacts.thefocus.ai/d/Ab3xY9kQ
+echo '{"suggestions":[{"anchorQuote":"exact text","replacement":"new text"}]}' \
+  | npx @the-focus-ai/artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ
+```
+
+Each pull cuts a numbered Version with a diff, so both sides can track the round-trip. Suggestions are never applied automatically.
+
 ## Posture
 
 - No public index
