@@ -131,7 +131,7 @@ describe("Living Doc round-trip", () => {
     expect(after.pendingSuggestions).toHaveLength(0);
   });
 
-  it("marks an accepted Suggestion as not applied when its anchor no longer exists", async () => {
+  it("keeps a Suggestion pending when its anchor no longer exists", async () => {
     const store = new InMemoryLivingDocMetadataStore();
     await publish(store, "original sentence");
     await pullLivingDocFeedback({
@@ -154,7 +154,66 @@ describe("Living Doc round-trip", () => {
       "accepted",
     );
     expect(decision.applied).toBe(false);
+    expect(decision.occurrenceCount).toBe(0);
     expect(decision.markdown).toBe("original sentence");
+
+    // The replacement stays visible on the review surface for a retry/reject.
+    const after = await getReviewState(store, "reviewSecret1");
+    expect(after.pendingSuggestions).toHaveLength(1);
+    expect(after.pendingSuggestions[0].status).toBe("pending");
+  });
+
+  it("applies a Suggestion at its anchorStart when the quote matches more than once", async () => {
+    const store = new InMemoryLivingDocMetadataStore();
+    const markdown = "# Doc\n\nTODO fix this.\n\nMiddle.\n\nTODO fix this.\n";
+    await publish(store, markdown);
+    await pullLivingDocFeedback({
+      opaqueId: "docOpaque1",
+      publisherEmail,
+      store,
+    });
+
+    const secondOccurrence = markdown.lastIndexOf("TODO fix this.");
+    await respondToLivingDoc({
+      opaqueId: "docOpaque1",
+      publisherEmail,
+      store,
+      suggestions: [
+        {
+          anchorQuote: "TODO fix this.",
+          replacement: "Fixed.",
+          anchorStart: secondOccurrence,
+        },
+      ],
+    });
+    const state = await getReviewState(store, "reviewSecret1");
+
+    const decision = await decideSuggestion(
+      store,
+      "reviewSecret1",
+      state.pendingSuggestions[0].id,
+      "accepted",
+    );
+    expect(decision.applied).toBe(true);
+    expect(decision.occurrenceCount).toBe(2);
+    expect(decision.markdown).toBe(
+      "# Doc\n\nTODO fix this.\n\nMiddle.\n\nFixed.\n",
+    );
+  });
+
+  it("rejects a Suggestion with a negative or fractional anchorStart", async () => {
+    const store = new InMemoryLivingDocMetadataStore();
+    await publish(store, "some text");
+    await expect(
+      respondToLivingDoc({
+        opaqueId: "docOpaque1",
+        publisherEmail,
+        store,
+        suggestions: [
+          { anchorQuote: "some", replacement: "any", anchorStart: -1 },
+        ],
+      }),
+    ).rejects.toThrow(/non-negative integer/);
   });
 
   it("lets the agent reply to a Comment and the Reviewer resolve it", async () => {

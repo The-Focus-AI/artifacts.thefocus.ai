@@ -121,6 +121,17 @@ async function route(
     return;
   }
 
+  // In production Vercel serves public/ statically; mirror the one asset the
+  // review editor needs.
+  if (url.pathname === "/vendor/review-editor.js") {
+    const bundle = await readFile(
+      join(process.cwd(), "public", "vendor", "review-editor.js"),
+    );
+    response.setHeader("content-type", "text/javascript; charset=utf-8");
+    response.end(bundle);
+    return;
+  }
+
   response.setHeader("content-type", "text/plain; charset=utf-8");
   response.end(
     [

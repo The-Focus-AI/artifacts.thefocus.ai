@@ -1,5 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
+import MarkdownIt from "markdown-it";
+
 import {
   authenticatePublisherToken,
   type PublisherTokenStore,
@@ -93,6 +95,7 @@ export interface PulledComment {
 export interface PulledSuggestion {
   id: string;
   anchorQuote: string;
+  anchorStart: number | null;
   replacement: string;
   note: string | null;
   status: SuggestionStatus;
@@ -161,6 +164,9 @@ export interface RespondSuggestionInput {
   anchorQuote: string;
   replacement: string;
   note?: string | null;
+  // Character offset of the anchored span in the pulled Markdown. Optional,
+  // but the only way to disambiguate when anchorQuote appears more than once.
+  anchorStart?: number | null;
 }
 
 export interface RespondReplyInput {
@@ -207,12 +213,26 @@ export async function respondToLivingDoc(
     assertTextWithinLimit(suggestion.replacement, "Suggestion replacement");
     if (suggestion.note)
       assertTextWithinLimit(suggestion.note, "Suggestion note");
+    const anchorStart = suggestion.anchorStart ?? null;
+    if (
+      anchorStart !== null &&
+      (!Number.isInteger(anchorStart) || anchorStart < 0)
+    ) {
+      throw new Error(
+        "Suggestion anchorStart must be a non-negative integer offset.",
+      );
+    }
     createdSuggestions.push(
       await input.store.addSuggestion({
         id: randomUUID(),
         livingDocId: doc.opaqueId,
         versionNumber,
         anchorQuote: suggestion.anchorQuote,
+        anchorStart,
+        anchorEnd:
+          anchorStart === null
+            ? null
+            : anchorStart + suggestion.anchorQuote.length,
         replacement: suggestion.replacement,
         note: suggestion.note ?? null,
       }),
@@ -367,13 +387,18 @@ export interface DecideSuggestionResult {
   suggestion: LivingDocSuggestion;
   markdown: string;
   applied: boolean;
+  // How many places the anchored quote matched in the live Markdown at
+  // decision time, so the UI can flag ambiguous applies.
+  occurrenceCount: number;
 }
 
 /**
  * Accept or reject an agent Suggestion. Accepting applies the change to the
- * live Markdown by replacing the first occurrence of the anchored quote; if the
- * quote no longer exists (the Reviewer edited past it), the Suggestion is still
- * marked accepted but reported as not applied so the UI can flag it.
+ * live Markdown at the anchored quote — when the quote matches more than one
+ * place, the occurrence nearest the Suggestion's anchorStart offset wins. If
+ * the quote no longer exists (the Reviewer edited past it), the Suggestion
+ * stays pending so its replacement text remains visible on the review surface
+ * instead of vanishing with an accepted-but-unapplied status.
  */
 export async function decideSuggestion(
   store: LivingDocMetadataStore,
@@ -391,22 +416,61 @@ export async function decideSuggestion(
   }
 
   let markdown = doc.currentMarkdown;
+  const occurrences = findOccurrences(markdown, suggestion.anchorQuote);
   let applied = false;
   if (decision === "accepted") {
-    const index = markdown.indexOf(suggestion.anchorQuote);
-    if (index >= 0) {
+    const index = pickOccurrence(occurrences, suggestion.anchorStart);
+    if (index !== null) {
       markdown =
         markdown.slice(0, index) +
         suggestion.replacement +
         markdown.slice(index + suggestion.anchorQuote.length);
       await store.updateMarkdown(doc.opaqueId, markdown);
       applied = true;
+    } else {
+      return {
+        suggestion,
+        markdown,
+        applied: false,
+        occurrenceCount: occurrences.length,
+      };
     }
   }
 
   const updated = await store.setSuggestionStatus(suggestionId, decision);
   if (!updated) throw new Error("Suggestion could not be updated.");
-  return { suggestion: updated, markdown, applied };
+  return {
+    suggestion: updated,
+    markdown,
+    applied,
+    occurrenceCount: occurrences.length,
+  };
+}
+
+function findOccurrences(haystack: string, needle: string): number[] {
+  const occurrences: number[] = [];
+  if (!needle) return occurrences;
+  let index = haystack.indexOf(needle);
+  while (index >= 0) {
+    occurrences.push(index);
+    index = haystack.indexOf(needle, index + 1);
+  }
+  return occurrences;
+}
+
+function pickOccurrence(
+  occurrences: number[],
+  anchorStart: number | null,
+): number | null {
+  if (occurrences.length === 0) return null;
+  if (anchorStart === null) return occurrences[0];
+  let best = occurrences[0];
+  for (const occurrence of occurrences) {
+    if (Math.abs(occurrence - anchorStart) < Math.abs(best - anchorStart)) {
+      best = occurrence;
+    }
+  }
+  return best;
 }
 
 // --- Request handlers --------------------------------------------------------
@@ -744,6 +808,7 @@ function toPulledSuggestion(suggestion: LivingDocSuggestion): PulledSuggestion {
   return {
     id: suggestion.id,
     anchorQuote: suggestion.anchorQuote,
+    anchorStart: suggestion.anchorStart,
     replacement: suggestion.replacement,
     note: suggestion.note,
     status: suggestion.status,
@@ -778,13 +843,16 @@ export function createReviewId(): string {
   return randomBytes(24).toString("base64url");
 }
 
+// html:false keeps raw HTML in reviewer-editable Markdown from reaching the page.
+const viewPageMarkdownRenderer = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: false,
+});
+
 function renderViewPage(doc: LivingDoc): string {
-  const payload = JSON.stringify({
-    title: doc.title,
-    markdown: doc.currentMarkdown,
-    versionNumber: doc.latestVersionNumber,
-  }).replace(/</g, "\\u003c");
   const title = escapeHtml(doc.title ?? "Living Doc");
+  const content = viewPageMarkdownRenderer.render(doc.currentMarkdown || "");
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -805,15 +873,8 @@ function renderViewPage(doc: LivingDoc): string {
 <body>
 <main>
   <div class="doc-meta">Living Doc · read-only view</div>
-  <article id="content">Rendering…</article>
+  <article id="content">${content}</article>
 </main>
-<script type="application/json" id="doc-data">${payload}</script>
-<script type="module">
-  import MarkdownIt from "https://esm.sh/markdown-it@14";
-  const data = JSON.parse(document.getElementById("doc-data").textContent);
-  const md = new MarkdownIt({ html: false, linkify: true, breaks: false });
-  document.getElementById("content").innerHTML = md.render(data.markdown || "");
-</script>
 </body>
 </html>`;
 }

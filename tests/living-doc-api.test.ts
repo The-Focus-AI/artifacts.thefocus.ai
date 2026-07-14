@@ -114,7 +114,10 @@ describe("Living Doc agent API", () => {
     });
     expect(html.headers.get("content-type")).toContain("text/html");
     expect(html.headers.get("x-robots-tag")).toContain("noindex");
-    expect(await html.text()).toContain("# Visible");
+    const page = await html.text();
+    // Markdown is rendered server-side; the page needs no CDN scripts.
+    expect(page).toContain("<h1>Visible</h1>");
+    expect(page).not.toContain("esm.sh");
 
     const json = (await (
       await serveLivingDocViewRequest({

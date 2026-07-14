@@ -111,8 +111,12 @@ fnox exec -- pnpm artifacts doc publish ./proposal.md --title "Proposal"
 pnpm artifacts doc pull https://artifacts.thefocus.ai/d/Ab3xY9kQ
 
 # Respond with span-anchored Suggestions and replies to Comments.
-# Body JSON: { "suggestions": [{ "anchorQuote": "...", "replacement": "...", "note": "..." }],
+# Body JSON: { "suggestions": [{ "anchorQuote": "...", "replacement": "...",
+#                                "note": "...", "anchorStart": 123 }],
 #             "replies": [{ "parentCommentId": "...", "body": "..." }] }
+# anchorStart (optional) is the quote's character offset in the pulled
+# Markdown; include it whenever the quoted text could appear more than once,
+# since it decides which occurrence an accepted Suggestion replaces.
 pnpm artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ --body feedback.json
 cat feedback.json | pnpm artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ
 
@@ -123,4 +127,4 @@ pnpm artifacts doc list
 pnpm artifacts doc remove https://artifacts.thefocus.ai/d/Ab3xY9kQ --yes
 ```
 
-Suggestions are never applied automatically — the Reviewer accepts or rejects each one in the editor, and accepting applies the change to the live Markdown. Each `doc pull` advances the Version number so both sides can refer back to "as of Version 3." Because the review surface is reachable by anyone holding the Review Link, all inputs are size-capped server-side (2 MB for the Markdown, 64 KB for comments, suggestion text, and replies). Living Docs require `migrations/0005_create_living_docs.sql`.
+Suggestions are never applied automatically — the Reviewer accepts or rejects each one in the editor, and accepting applies the change to the live Markdown at the anchored quote (nearest `anchorStart` when it matches more than once). If the Reviewer has edited the quoted text away, the Suggestion stays pending so its replacement remains visible rather than being marked accepted without applying. Each `doc pull` advances the Version number so both sides can refer back to "as of Version 3." Because the review surface is reachable by anyone holding the Review Link, all inputs are size-capped server-side (2 MB for the Markdown, 64 KB for comments, suggestion text, and replies). Living Docs require `migrations/0005_create_living_docs.sql`.

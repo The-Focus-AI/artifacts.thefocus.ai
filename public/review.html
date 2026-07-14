@@ -216,10 +216,13 @@
     </div>
 
     <script type="module">
-      import { EditorView, basicSetup } from "https://esm.sh/codemirror@6.0.1";
-      import { markdown } from "https://esm.sh/@codemirror/lang-markdown@6.2.5";
-      import { EditorState } from "https://esm.sh/@codemirror/state@6.4.1";
-      import MarkdownIt from "https://esm.sh/markdown-it@14.1.0";
+      import {
+        EditorView,
+        basicSetup,
+        markdown,
+        EditorState,
+        MarkdownIt,
+      } from "/vendor/review-editor.js";
 
       const reviewId = location.pathname.split("/").filter(Boolean)[1] ?? "";
       const md = new MarkdownIt({ html: false, linkify: true });
@@ -353,10 +356,14 @@
           if (decision === "accepted") {
             if (result.applied) {
               setDocText(result.markdown);
-              setStatus("Suggestion applied");
+              setStatus(
+                result.occurrenceCount > 1
+                  ? `Suggestion applied (the quoted text matched ${result.occurrenceCount} places; used the agent's anchor)`
+                  : "Suggestion applied",
+              );
             } else {
               setStatus(
-                "Accepted, but the anchored text had changed — apply manually.",
+                "The anchored text has changed, so the suggestion is still pending — restore the text or reject it.",
               );
             }
           } else {

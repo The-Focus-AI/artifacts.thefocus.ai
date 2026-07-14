@@ -33,6 +33,18 @@ feature (see `docs/adr/0005-living-docs-agent-human-review-loop.md`). It adds:
 - `living_doc_suggestions` — agent-proposed span changes with `pending` /
   `accepted` / `rejected` status.
 
+## Review editor bundle
+
+The Living Doc review page (`public/review.html`) and the read-only view page
+are self-contained: the view page renders Markdown server-side, and the editor
+loads CodeMirror and markdown-it from the committed bundle
+`public/vendor/review-editor.js` — no CDN at runtime. After upgrading those
+dependencies, regenerate and commit the bundle:
+
+```bash
+pnpm run build:review-editor
+```
+
 ## Test and local adapters
 
 Automated tests use in-memory/fake adapters, so they do not require Neon or Vercel Blob credentials. Later application code can import:
