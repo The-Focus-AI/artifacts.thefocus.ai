@@ -15,3 +15,6 @@ dist/
 *.log
 .vercel
 .antigravitycli/
+
+# Local session telemetry — never commit
+.umwelten/
