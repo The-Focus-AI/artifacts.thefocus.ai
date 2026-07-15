@@ -66,12 +66,16 @@ describe("agent readiness discovery resources", () => {
   });
 
   it("publishes a Markdown representation of the root landing page", async () => {
-    const markdown = await readProjectFile("public/index.md");
+    // Named landing.md (not index.md) so Vercel does not serve it as the
+    // directory index for `/` and shadow the /api/root negotiation rewrite.
+    const markdown = await readProjectFile("public/landing.md");
 
     expect(markdown).toContain("# Publish agent-created HTML");
     expect(markdown).toContain(
       "npx @the-focus-ai/artifacts publish ./artifact.html",
     );
+
+    await expect(readProjectFile("public/index.md")).rejects.toThrow();
   });
 
   it("publishes a sitemap for root service resources only", async () => {
@@ -119,9 +123,15 @@ describe("agent readiness discovery resources", () => {
     // The root must be served by the negotiation function, not the static
     // filesystem (which would shadow negotiation) and not header-conditional
     // rewrites (whose `has` matching proved unreliable in production).
+    // public/index.md is also forbidden: Vercel treats it as `/` and bypasses
+    // this rewrite. Keep the Markdown twin as landing.md and rewrite /index.md.
     expect(vercelConfig.rewrites).toContainEqual({
       source: "/",
       destination: "/api/root",
+    });
+    expect(vercelConfig.rewrites).toContainEqual({
+      source: "/index.md",
+      destination: "/landing.md",
     });
   });
 
