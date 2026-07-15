@@ -116,28 +116,51 @@ describe("agent readiness discovery resources", () => {
       ],
     });
 
-    const rewrites = vercelConfig.rewrites ?? [];
-    const markdownIndex = rewrites.findIndex(
-      (r) =>
-        r.source === "/" &&
-        r.destination === "/index.md" &&
-        r.has?.some(
-          (h) =>
-            h.type === "header" &&
-            h.key === "accept" &&
-            h.value === ".*text/markdown.*",
-        ),
-    );
-    const landingIndex = rewrites.findIndex(
-      (r) => r.source === "/" && r.destination === "/landing.html" && !r.has,
-    );
+    // The root must be served by the negotiation function, not the static
+    // filesystem (which would shadow negotiation) and not header-conditional
+    // rewrites (whose `has` matching proved unreliable in production).
+    expect(vercelConfig.rewrites).toContainEqual({
+      source: "/",
+      destination: "/api/root",
+    });
+  });
 
-    // The landing page must be served via rewrite (not the static
-    // filesystem, which would shadow the Accept: text/markdown rewrite),
-    // and the Markdown negotiation rewrite must run first.
-    expect(markdownIndex).toBeGreaterThanOrEqual(0);
-    expect(landingIndex).toBeGreaterThanOrEqual(0);
-    expect(markdownIndex).toBeLessThan(landingIndex);
+  it("negotiates the root response by Accept header", async () => {
+    const { default: handler, wantsMarkdown } = await import("../api/root.js");
+
+    expect(wantsMarkdown("text/markdown")).toBe(true);
+    expect(wantsMarkdown("text/html,application/xhtml+xml,*/*;q=0.8")).toBe(
+      false,
+    );
+    expect(wantsMarkdown(undefined)).toBe(false);
+
+    async function invoke(accept?: string) {
+      const headers: Record<string, string> = {};
+      let body = "";
+      const response = {
+        statusCode: 0,
+        setHeader(key: string, value: string) {
+          headers[key.toLowerCase()] = value;
+        },
+        end(chunk: Buffer) {
+          body = chunk.toString("utf8");
+        },
+      };
+      await handler(
+        { headers: accept ? { accept } : {} } as never,
+        response as never,
+      );
+      return { headers, body };
+    }
+
+    const agent = await invoke("text/markdown");
+    expect(agent.headers["content-type"]).toContain("text/markdown");
+    expect(agent.headers["vary"]).toBe("Accept");
+    expect(agent.body).toContain("# Publish agent-created HTML");
+
+    const browser = await invoke("text/html,*/*;q=0.8");
+    expect(browser.headers["content-type"]).toContain("text/html");
+    expect(browser.body).toContain("TheFocus.AI");
   });
 });
 

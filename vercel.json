@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/root.ts": {
+      "includeFiles": "public/**"
+    }
+  },
   "headers": [
     {
       "source": "/",
@@ -38,18 +43,7 @@
   "rewrites": [
     {
       "source": "/",
-      "has": [
-        {
-          "type": "header",
-          "key": "accept",
-          "value": ".*text/markdown.*"
-        }
-      ],
-      "destination": "/index.md"
-    },
-    {
-      "source": "/",
-      "destination": "/landing.html"
+      "destination": "/api/root"
     },
     {
       "source": "/login/callback",
