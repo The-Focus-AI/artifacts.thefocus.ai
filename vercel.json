@@ -10,6 +10,10 @@
         {
           "key": "Content-Signal",
           "value": "ai-train=no, search=yes, ai-input=yes"
+        },
+        {
+          "key": "Vary",
+          "value": "Accept"
         }
       ]
     },
@@ -42,6 +46,10 @@
         }
       ],
       "destination": "/index.md"
+    },
+    {
+      "source": "/",
+      "destination": "/landing.html"
     },
     {
       "source": "/login/callback",

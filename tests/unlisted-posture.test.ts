@@ -17,7 +17,7 @@ async function readProjectFile(path: string): Promise<string> {
 
 describe("minimal landing page", () => {
   it("is TheFocus.AI branded and links to the main site", async () => {
-    const html = await readProjectFile("public/index.html");
+    const html = await readProjectFile("public/landing.html");
 
     expect(html).toContain("TheFocus.AI");
     expect(html).toContain("Artifacts");
@@ -26,7 +26,7 @@ describe("minimal landing page", () => {
   });
 
   it("does not expose a public Publication listing", async () => {
-    const html = await readProjectFile("public/index.html");
+    const html = await readProjectFile("public/landing.html");
     const vercelConfig = JSON.parse(await readProjectFile("vercel.json")) as {
       rewrites?: Array<{ source: string; destination: string }>;
     };
@@ -109,13 +109,35 @@ describe("agent readiness discovery resources", () => {
           key: "Content-Signal",
           value: "ai-train=no, search=yes, ai-input=yes",
         },
+        {
+          key: "Vary",
+          value: "Accept",
+        },
       ],
     });
-    expect(vercelConfig.rewrites).toContainEqual({
-      source: "/",
-      has: [{ type: "header", key: "accept", value: ".*text/markdown.*" }],
-      destination: "/index.md",
-    });
+
+    const rewrites = vercelConfig.rewrites ?? [];
+    const markdownIndex = rewrites.findIndex(
+      (r) =>
+        r.source === "/" &&
+        r.destination === "/index.md" &&
+        r.has?.some(
+          (h) =>
+            h.type === "header" &&
+            h.key === "accept" &&
+            h.value === ".*text/markdown.*",
+        ),
+    );
+    const landingIndex = rewrites.findIndex(
+      (r) => r.source === "/" && r.destination === "/landing.html" && !r.has,
+    );
+
+    // The landing page must be served via rewrite (not the static
+    // filesystem, which would shadow the Accept: text/markdown rewrite),
+    // and the Markdown negotiation rewrite must run first.
+    expect(markdownIndex).toBeGreaterThanOrEqual(0);
+    expect(landingIndex).toBeGreaterThanOrEqual(0);
+    expect(markdownIndex).toBeLessThan(landingIndex);
   });
 });
 
