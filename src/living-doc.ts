@@ -7,6 +7,7 @@ import {
   type PublisherTokenStore,
 } from "./auth.js";
 import { formatUnifiedDiff } from "./diff.js";
+import { deriveMarkdownTitle, markdownBody } from "./front-matter.js";
 import { createOpaqueId, defaultPublicBaseUrl } from "./publication.js";
 import {
   type CommentOrigin,
@@ -16,6 +17,18 @@ import {
   type LivingDocSuggestion,
   type SuggestionStatus,
 } from "./storage/living-doc-metadata.js";
+
+export {
+  deriveMarkdownTitle,
+  formatFrontMatterFieldValue,
+  joinFrontMatter,
+  markdownBody,
+  parseFrontMatterData,
+  parseFrontMatterFieldValue,
+  serializeFrontMatterData,
+  splitFrontMatter,
+  titleFromFrontMatter,
+} from "./front-matter.js";
 
 export const livingDocViewPrefix = "/d";
 export const livingDocReviewPrefix = "/r";
@@ -334,7 +347,9 @@ export async function saveReviewMarkdown(
 ): Promise<LivingDoc> {
   assertMarkdownWithinLimit(markdown);
   const doc = await requireActiveDocByReviewId(store, reviewId);
-  const updated = await store.updateMarkdown(doc.opaqueId, markdown);
+  const updated = await store.updateMarkdown(doc.opaqueId, markdown, {
+    title: deriveMarkdownTitle(markdown),
+  });
   if (!updated) throw new Error("Living Doc could not be updated.");
   return updated;
 }
@@ -425,7 +440,9 @@ export async function decideSuggestion(
         markdown.slice(0, index) +
         suggestion.replacement +
         markdown.slice(index + suggestion.anchorQuote.length);
-      await store.updateMarkdown(doc.opaqueId, markdown);
+      await store.updateMarkdown(doc.opaqueId, markdown, {
+        title: deriveMarkdownTitle(markdown),
+      });
       applied = true;
     } else {
       return {
@@ -755,15 +772,6 @@ export function livingDocSafetyHeaders(headers: HeadersInit = {}): Headers {
   });
 }
 
-export function deriveMarkdownTitle(markdown: string): string | null {
-  for (const line of markdown.split("\n")) {
-    const heading = line.match(/^#{1,6}\s+(.+?)\s*$/);
-    if (heading) return heading[1].slice(0, 200);
-    if (line.trim().length > 0) return line.trim().slice(0, 200);
-  }
-  return null;
-}
-
 function absoluteLivingDocUrl(publicBaseUrl: string, path: string): string {
   const base = publicBaseUrl.endsWith("/")
     ? publicBaseUrl
@@ -852,7 +860,9 @@ const viewPageMarkdownRenderer = new MarkdownIt({
 
 function renderViewPage(doc: LivingDoc): string {
   const title = escapeHtml(doc.title ?? "Living Doc");
-  const content = viewPageMarkdownRenderer.render(doc.currentMarkdown || "");
+  const content = viewPageMarkdownRenderer.render(
+    markdownBody(doc.currentMarkdown || ""),
+  );
   return `<!doctype html>
 <html lang="en">
 <head>

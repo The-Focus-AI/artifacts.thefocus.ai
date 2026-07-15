@@ -7,3 +7,12 @@ export { default as StarterKit } from "@tiptap/starter-kit";
 export { Markdown } from "tiptap-markdown";
 export { Plugin, PluginKey } from "@tiptap/pm/state";
 export { Decoration, DecorationSet } from "@tiptap/pm/view";
+export {
+  deriveMarkdownTitle,
+  formatFrontMatterFieldValue,
+  joinFrontMatter,
+  parseFrontMatterData,
+  parseFrontMatterFieldValue,
+  serializeFrontMatterData,
+  splitFrontMatter,
+} from "../src/front-matter.ts";

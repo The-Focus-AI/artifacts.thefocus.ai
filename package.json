@@ -52,7 +52,8 @@
     "@clerk/backend": "^3.4.11",
     "@neondatabase/serverless": "^1.1.0",
     "@vercel/blob": "^2.4.0",
-    "markdown-it": "^14.3.0"
+    "markdown-it": "^14.3.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@tiptap/core": "^2.27.2",
