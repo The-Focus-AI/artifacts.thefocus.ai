@@ -9,6 +9,11 @@ import { join } from "node:path";
  * proved unreliable in production — every request matched — so `/` is
  * rewritten here instead. Agents that ask for `Accept: text/markdown`
  * get the Markdown twin; everyone else gets the HTML landing page.
+ *
+ * The Markdown twin lives at `public/landing.md`, not `public/index.md`.
+ * A static `index.md` in `public/` is treated as the directory index for
+ * `/` and shadows this rewrite, so browsers always got Markdown.
+ * The public `/index.md` URL is preserved via a rewrite to `/landing.md`.
  */
 export function wantsMarkdown(accept: string | undefined): boolean {
   return /\btext\/markdown\b/i.test(accept ?? "");
@@ -19,7 +24,7 @@ export default async function handler(
   response: ServerResponse,
 ): Promise<void> {
   const markdown = wantsMarkdown(request.headers.accept);
-  const file = markdown ? "index.md" : "landing.html";
+  const file = markdown ? "landing.md" : "landing.html";
   const contentType = markdown
     ? "text/markdown; charset=utf-8"
     : "text/html; charset=utf-8";
