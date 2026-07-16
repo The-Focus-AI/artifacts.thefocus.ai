@@ -59,10 +59,49 @@ describe("agent readiness discovery resources", () => {
       "npx @the-focus-ai/artifacts publish ./artifact.html",
     );
     expect(llms).toContain("https://artifacts.thefocus.ai/index.md");
+    expect(llms).toContain("https://artifacts.thefocus.ai/skill.md");
+    expect(llms).toContain(
+      "npx skills add The-Focus-AI/artifacts.thefocus.ai --skill artifacts -g",
+    );
     expect(llms).toContain("https://artifacts.thefocus.ai/sitemap.xml");
     expect(llms).not.toMatch(
       /https:\/\/artifacts\.thefocus\.ai\/a\/[A-Za-z0-9]{9,}/,
     );
+  });
+
+  it("publishes an installable Artifacts skill on the site and in-repo", async () => {
+    const skill = await readProjectFile("skills/artifacts/SKILL.md");
+    const hosted = await readProjectFile("public/skill.md");
+    const wellKnown = await readProjectFile(
+      "public/.well-known/skills/artifacts/SKILL.md",
+    );
+    const index = JSON.parse(
+      await readProjectFile("public/.well-known/skills/index.json"),
+    ) as { skills: Array<{ name: string; files: string[] }> };
+    const version = JSON.parse(
+      await readProjectFile("public/skill-version.json"),
+    ) as {
+      name: string;
+      version: string;
+      recommendedInstall: string;
+      skillUrl: string;
+    };
+
+    expect(skill).toContain("name: artifacts");
+    expect(skill).toContain("npx @the-focus-ai/artifacts publish");
+    expect(skill).toContain("doc publish");
+    expect(hosted).toBe(skill);
+    expect(wellKnown).toBe(skill);
+    expect(index.skills).toContainEqual({
+      name: "artifacts",
+      description:
+        "Publish agent-created HTML Artifacts and Living Docs to unlisted TheFocus.AI URLs.",
+      files: ["SKILL.md"],
+    });
+    expect(version.name).toBe("artifacts");
+    expect(version.version).toBe("1.2.0");
+    expect(version.recommendedInstall).toContain("--skill artifacts");
+    expect(version.skillUrl).toBe("https://artifacts.thefocus.ai/skill.md");
   });
 
   it("publishes a Markdown representation of the root landing page", async () => {
@@ -107,7 +146,7 @@ describe("agent readiness discovery resources", () => {
         {
           key: "Link",
           value:
-            '</sitemap.xml>; rel="sitemap"; type="application/xml", </llms.txt>; rel="alternate"; type="text/plain", </index.md>; rel="alternate"; type="text/markdown"',
+            '</sitemap.xml>; rel="sitemap"; type="application/xml", </llms.txt>; rel="alternate"; type="text/plain", </index.md>; rel="alternate"; type="text/markdown", </skill.md>; rel="describedby"; type="text/markdown"; title="artifacts skill", </skill-version.json>; rel="describedby"; type="application/json"; title="skill version", </.well-known/skills/index.json>; rel="describedby"; type="application/json"; title="well-known skills"',
         },
         {
           key: "Content-Signal",
@@ -119,7 +158,6 @@ describe("agent readiness discovery resources", () => {
         },
       ],
     });
-
     // The root must be served by the negotiation function, not the static
     // filesystem (which would shadow negotiation) and not header-conditional
     // rewrites (whose `has` matching proved unreliable in production).
@@ -133,6 +171,36 @@ describe("agent readiness discovery resources", () => {
       source: "/index.md",
       destination: "/landing.md",
     });
+  });
+
+  it("serves skill version metadata from /api/skill/version", async () => {
+    const { default: handler } = await import("../api/skill/version.js");
+    const headers: Record<string, string> = {};
+    let body = "";
+    await handler(
+      {} as never,
+      {
+        statusCode: 0,
+        setHeader(key: string, value: string) {
+          headers[key.toLowerCase()] = value;
+        },
+        end(chunk: string) {
+          body = chunk;
+        },
+      } as never,
+    );
+
+    expect(headers["content-type"]).toContain("application/json");
+    const parsed = JSON.parse(body) as {
+      name: string;
+      skillUrl: string;
+      recommendedInstall: string;
+    };
+    expect(parsed.name).toBe("artifacts");
+    expect(parsed.skillUrl).toBe("https://artifacts.thefocus.ai/skill.md");
+    expect(parsed.recommendedInstall).toContain(
+      "The-Focus-AI/artifacts.thefocus.ai",
+    );
   });
 
   it("negotiates the root response by Accept header", async () => {

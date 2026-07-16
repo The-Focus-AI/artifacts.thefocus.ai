@@ -10,6 +10,15 @@
     <loc>https://artifacts.thefocus.ai/llms.txt</loc>
   </url>
   <url>
+    <loc>https://artifacts.thefocus.ai/skill.md</loc>
+  </url>
+  <url>
+    <loc>https://artifacts.thefocus.ai/api/skill/version</loc>
+  </url>
+  <url>
+    <loc>https://artifacts.thefocus.ai/.well-known/skills/index.json</loc>
+  </url>
+  <url>
     <loc>https://artifacts.thefocus.ai/robots.txt</loc>
   </url>
 </urlset>

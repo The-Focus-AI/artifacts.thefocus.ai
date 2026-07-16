@@ -31,6 +31,14 @@ See [docs/deploy.md](docs/deploy.md) for Vercel project, custom domain, pull-req
 
 Use Artifacts when an agent has produced a local HTML file or static directory and needs to return a URL instead of attaching files or asking a human to set up hosting.
 
+Install the agent skill (recommended for coding agents):
+
+```bash
+npx skills add The-Focus-AI/artifacts.thefocus.ai --skill artifacts -g
+```
+
+The hosted skill is published at [https://artifacts.thefocus.ai/skill.md](https://artifacts.thefocus.ai/skill.md). The canonical in-repo copy lives at `skills/artifacts/SKILL.md` and must stay identical to `public/skill.md`.
+
 Install/run the CLI through npm or the repo-local script:
 
 ```bash

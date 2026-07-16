@@ -4,6 +4,20 @@
 
 Artifacts turns local agent output into an unlisted Publication URL. A verified TheFocus.AI Publisher can publish one HTML file or one directory with an Entry Page, then share the resulting `/a/{id}` URL with a human reviewer. The service is intentionally CLI-first: agents should use the npm package, not a dashboard.
 
+## Install the skill
+
+```bash
+npx skills add The-Focus-AI/artifacts.thefocus.ai --skill artifacts -g
+```
+
+Hosted skill and metadata:
+
+- [Hosted skill](https://artifacts.thefocus.ai/skill.md)
+- [Skill version](https://artifacts.thefocus.ai/api/skill/version)
+- [Well-known skills index](https://artifacts.thefocus.ai/.well-known/skills/index.json)
+
+If local skill text and live docs disagree, prefer this `llms.txt`, live CLI output, and the hosted skill.
+
 ## Primary agent workflow
 
 1. Create or update a local HTML Artifact, or generate HTML output.
@@ -77,6 +91,9 @@ Agent loop: publish, hand the human the Review Link (`/r/...` — a bearer capab
 
 ## Service resources
 
+- [Hosted skill](https://artifacts.thefocus.ai/skill.md): installable agent skill text.
+- [Skill version](https://artifacts.thefocus.ai/api/skill/version): install command and skill metadata.
+- [Well-known skills index](https://artifacts.thefocus.ai/.well-known/skills/index.json): Hermes-style skill discovery.
 - [Root landing page as Markdown](https://artifacts.thefocus.ai/index.md): agent-oriented service overview and copy-paste commands.
 - [Root landing page as HTML](https://artifacts.thefocus.ai/): human-facing service page.
 - [Robots policy](https://artifacts.thefocus.ai/robots.txt): crawler rules, sitemap reference, and content-signal policy.
@@ -85,4 +102,4 @@ Agent loop: publish, hand the human the Review Link (`/r/...` — a bearer capab
 
 ## Agent guidance
 
-Prefer `https://artifacts.thefocus.ai/index.md` or request `https://artifacts.thefocus.ai/` with `Accept: text/markdown` when you need to understand this service. Use the CLI for publishing. Do not crawl `/a/` Publication URLs unless the user provides a specific URL and asks you to inspect that exact Artifact.
+Prefer `https://artifacts.thefocus.ai/llms.txt`, `https://artifacts.thefocus.ai/skill.md`, or `https://artifacts.thefocus.ai/index.md` when you need to understand this service. Use the CLI for publishing. Do not crawl `/a/` Publication URLs unless the user provides a specific URL and asks you to inspect that exact Artifact.

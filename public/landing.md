@@ -7,6 +7,14 @@ description: Dynamic publishing skill for AI-created HTML Artifacts.
 
 Artifacts is a dynamic publishing skill for TheFocus.AI agents. Use it when an agent creates an HTML report, prototype, mockup, visualization, or static bundle and needs to hand a human a stable unlisted URL.
 
+Install the skill:
+
+```bash
+npx skills add The-Focus-AI/artifacts.thefocus.ai --skill artifacts -g
+```
+
+Or publish directly with the CLI:
+
 ```bash
 npx @the-focus-ai/artifacts publish ./artifact.html
 npx @the-focus-ai/artifacts publish ./report.html --title "Q2 Results"
@@ -61,4 +69,4 @@ Each pull cuts a numbered Version with a diff, so both sides can track the round
 - Publication paths under `/a/` are intentionally excluded from crawler discovery
 - Public service docs may be used by agents as input; published client Artifacts should not be enumerated
 
-[Read llms.txt](/llms.txt) · [Visit TheFocus.AI](https://thefocus.ai/)
+[Read llms.txt](/llms.txt) · [Read skill.md](/skill.md) · [Visit TheFocus.AI](https://thefocus.ai/)

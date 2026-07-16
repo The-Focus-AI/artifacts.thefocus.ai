@@ -37,7 +37,7 @@ export default async function handler(
   response.setHeader("Content-Signal", "ai-train=no, search=yes, ai-input=yes");
   response.setHeader(
     "Link",
-    '</sitemap.xml>; rel="sitemap"; type="application/xml", </llms.txt>; rel="alternate"; type="text/plain", </index.md>; rel="alternate"; type="text/markdown"',
+    '</sitemap.xml>; rel="sitemap"; type="application/xml", </llms.txt>; rel="alternate"; type="text/plain", </index.md>; rel="alternate"; type="text/markdown", </skill.md>; rel="describedby"; type="text/markdown"; title="artifacts skill", </skill-version.json>; rel="describedby"; type="application/json"; title="skill version", </.well-known/skills/index.json>; rel="describedby"; type="application/json"; title="well-known skills"',
   );
   response.end(body);
 }
