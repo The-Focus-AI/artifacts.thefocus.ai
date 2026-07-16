@@ -1,0 +1,11 @@
+{
+  "name": "artifacts",
+  "version": "1.2.0",
+  "recommendedInstall": "npx skills add The-Focus-AI/artifacts.thefocus.ai --skill artifacts -g",
+  "docsUrl": "https://artifacts.thefocus.ai/llms.txt",
+  "skillUrl": "https://artifacts.thefocus.ai/skill.md",
+  "wellKnownSkillsIndexUrl": "https://artifacts.thefocus.ai/.well-known/skills/index.json",
+  "packageName": "@the-focus-ai/artifacts",
+  "homepage": "https://artifacts.thefocus.ai/",
+  "repository": "https://github.com/The-Focus-AI/artifacts.thefocus.ai"
+}

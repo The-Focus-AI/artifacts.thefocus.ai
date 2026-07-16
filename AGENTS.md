@@ -28,6 +28,27 @@ If this repository also links to TheFocus.AI standards repository, read its `AGE
 - Prefer TypeScript for application code unless the project states otherwise.
 - Before major edits, inspect existing conventions and preserve them unless changing them is the point of the task.
 
+## Public Artifacts skill
+
+The installable product skill for agents lives at `skills/artifacts/SKILL.md`.
+
+Keep these published copies identical to that file:
+
+- `public/skill.md` → `https://artifacts.thefocus.ai/skill.md`
+- `public/.well-known/skills/artifacts/SKILL.md`
+
+Also keep in sync when the skill version or install command changes:
+
+- `public/skill-version.json` (served at `/api/skill/version`)
+- `public/.well-known/skills/index.json`
+- `public/llms.txt` skill install section
+
+Recommended install:
+
+```bash
+npx skills add The-Focus-AI/artifacts.thefocus.ai --skill artifacts -g
+```
+
 ## Authentication architecture
 
 Publisher authentication uses Clerk for browser-based login with an automatic token handoff:

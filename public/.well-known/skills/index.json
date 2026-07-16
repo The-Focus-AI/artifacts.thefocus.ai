@@ -1,0 +1,9 @@
+{
+  "skills": [
+    {
+      "name": "artifacts",
+      "description": "Publish agent-created HTML Artifacts and Living Docs to unlisted TheFocus.AI URLs.",
+      "files": ["SKILL.md"]
+    }
+  ]
+}

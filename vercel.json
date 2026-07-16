@@ -2,6 +2,9 @@
   "functions": {
     "api/root.ts": {
       "includeFiles": "public/**"
+    },
+    "api/skill/version.ts": {
+      "includeFiles": "public/skill-version.json"
     }
   },
   "headers": [
@@ -10,7 +13,7 @@
       "headers": [
         {
           "key": "Link",
-          "value": "</sitemap.xml>; rel=\"sitemap\"; type=\"application/xml\", </llms.txt>; rel=\"alternate\"; type=\"text/plain\", </index.md>; rel=\"alternate\"; type=\"text/markdown\""
+          "value": "</sitemap.xml>; rel=\"sitemap\"; type=\"application/xml\", </llms.txt>; rel=\"alternate\"; type=\"text/plain\", </index.md>; rel=\"alternate\"; type=\"text/markdown\", </skill.md>; rel=\"describedby\"; type=\"text/markdown\"; title=\"artifacts skill\", </skill-version.json>; rel=\"describedby\"; type=\"application/json\"; title=\"skill version\", </.well-known/skills/index.json>; rel=\"describedby\"; type=\"application/json\"; title=\"well-known skills\""
         },
         {
           "key": "Content-Signal",
@@ -38,12 +41,59 @@
           "value": "ai-train=no, search=yes, ai-input=yes"
         }
       ]
+    },
+    {
+      "source": "/landing.md",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/markdown; charset=utf-8"
+        },
+        {
+          "key": "Vary",
+          "value": "Accept"
+        },
+        {
+          "key": "Content-Signal",
+          "value": "ai-train=no, search=yes, ai-input=yes"
+        }
+      ]
+    },
+    {
+      "source": "/skill.md",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/markdown; charset=utf-8"
+        },
+        {
+          "key": "Content-Signal",
+          "value": "ai-train=no, search=yes, ai-input=yes"
+        }
+      ]
+    },
+    {
+      "source": "/.well-known/skills/artifacts/SKILL.md",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/markdown; charset=utf-8"
+        },
+        {
+          "key": "Content-Signal",
+          "value": "ai-train=no, search=yes, ai-input=yes"
+        }
+      ]
     }
   ],
   "rewrites": [
     {
       "source": "/",
       "destination": "/api/root"
+    },
+    {
+      "source": "/index.md",
+      "destination": "/landing.md"
     },
     {
       "source": "/login/callback",
