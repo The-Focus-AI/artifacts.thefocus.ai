@@ -99,7 +99,11 @@ describe("agent readiness discovery resources", () => {
       files: ["SKILL.md"],
     });
     expect(version.name).toBe("artifacts");
-    expect(version.version).toBe("1.2.0");
+    const packageJson = JSON.parse(
+      await readProjectFile("package.json"),
+    ) as { version: string };
+    expect(version.version).toBe(packageJson.version);
+    expect(skill).toContain(`Skill version: ${packageJson.version}`);
     expect(version.recommendedInstall).toContain("--skill artifacts");
     expect(version.skillUrl).toBe("https://artifacts.thefocus.ai/skill.md");
   });
