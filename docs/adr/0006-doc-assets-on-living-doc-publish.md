@@ -10,7 +10,8 @@ When a Publisher runs `artifacts doc publish` on a Markdown file, relative **ima
 references become **Doc Assets**: binary files hosted with that Living Doc on Vercel Blob.
 The stored Markdown is rewritten to absolute Unlisted URLs under the same View Link prefix
 (`/d/{opaqueId}/…`). Bare `/d/{opaqueId}` remains the rendered View; nested paths serve Doc
-Asset bytes. Doc Assets are not Artifacts and are not Publications.
+Asset bytes. Doc Assets are not Artifacts and are not Publications. Image rewrite touches only
+matching `![…](…)` targets; YAML front matter and the rest of the file are never stripped.
 
 v1 scope:
 

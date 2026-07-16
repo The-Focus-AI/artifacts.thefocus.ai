@@ -20,6 +20,7 @@ Glossary and architecture follow `CONTEXT.md` and [ADR 0006](../adr/0006-doc-ass
 6. As an agent, I want only Markdown image references (`![…](…)`) to become Doc Assets in v1, so that ordinary file links do not unexpectedly upload.
 7. As an agent, I want already-absolute `http(s)` image URLs left unchanged, so that externally hosted images keep working.
 8. As an agent, I want the stored Living Doc Markdown rewritten to hosted Doc Asset URLs, so that View and Review Links load images without Local Source paths.
+   8a. As an agent, I want YAML front matter preserved through `doc publish` and Doc Asset rewrite, so that metadata in the Local Source file is never stripped from the hosted Living Doc.
 9. As a Reviewer, I want images in the Review editor to load from hosted Doc Asset URLs, so that WYSIWYG review matches the author’s intent.
 10. As a viewer holding a View Link, I want images to render in the read-only View, so that I can read the doc without the Review Link.
 11. As a viewer, I want Doc Assets addressed under `/d/{opaqueId}/{assetPath}`, so that one opaque id covers the Living Doc and its images.

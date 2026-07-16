@@ -38,8 +38,10 @@ Use `npx @the-focus-ai/artifacts list` to see your Publications and their titles
 
 A Living Doc is a mutable Markdown document an agent publishes so a human can edit and comment on it in the browser, then the agent pulls that feedback and responds with Suggestions. Use it when the deliverable is a document to iterate on with a human (proposal, spec, report draft), not a finished HTML Artifact.
 
+Publish the Markdown file including any YAML front matter (`---` … `---` at the top). The host never strips front matter on publish, image rewrite, or pull. Put `title:` in front matter when you have one; `--title` overrides. The View Link renders the body only; stored Markdown and `doc pull` keep the front matter.
+
 ```bash
-# Publish a Markdown file; prints JSON with viewUrl (/d/{id}) and reviewUrl (/r/{id})
+# Publish a Markdown file (front matter preserved); prints JSON with viewUrl (/d/{id}) and reviewUrl (/r/{id})
 npx @the-focus-ai/artifacts doc publish ./proposal.md --title "Proposal"
 
 # Pull feedback: cuts a numbered Version; prints current Markdown, a diff

@@ -8,6 +8,7 @@ import {
 } from "./auth.js";
 import { formatUnifiedDiff } from "./diff.js";
 import { rewriteDocAssetMarkdown } from "./doc-asset-rewrite.js";
+import { deriveMarkdownTitle, markdownBody } from "./front-matter.js";
 import { createOpaqueId, defaultPublicBaseUrl } from "./publication.js";
 import {
   contentTypeForDocAssetPath,
@@ -31,6 +32,13 @@ export {
   type CollectDocAssetsResult,
 } from "./doc-asset-collect.js";
 export { rewriteDocAssetMarkdown } from "./doc-asset-rewrite.js";
+export {
+  deriveMarkdownTitle,
+  joinFrontMatter,
+  markdownBody,
+  splitFrontMatter,
+  titleFromFrontMatter,
+} from "./front-matter.js";
 export {
   contentTypeForDocAssetPath,
   createVercelBlobDocAssetContentStore,
@@ -911,15 +919,6 @@ export function livingDocSafetyHeaders(headers: HeadersInit = {}): Headers {
   });
 }
 
-export function deriveMarkdownTitle(markdown: string): string | null {
-  for (const line of markdown.split("\n")) {
-    const heading = line.match(/^#{1,6}\s+(.+?)\s*$/);
-    if (heading) return heading[1].slice(0, 200);
-    if (line.trim().length > 0) return line.trim().slice(0, 200);
-  }
-  return null;
-}
-
 function absoluteLivingDocUrl(publicBaseUrl: string, path: string): string {
   const base = publicBaseUrl.endsWith("/")
     ? publicBaseUrl
@@ -1008,7 +1007,11 @@ const viewPageMarkdownRenderer = new MarkdownIt({
 
 function renderViewPage(doc: LivingDoc): string {
   const title = escapeHtml(doc.title ?? "Living Doc");
-  const content = viewPageMarkdownRenderer.render(doc.currentMarkdown || "");
+  // Render the body only so YAML fences are not turned into <hr>; the stored
+  // Living Doc Markdown always keeps front matter intact.
+  const content = viewPageMarkdownRenderer.render(
+    markdownBody(doc.currentMarkdown || ""),
+  );
   return `<!doctype html>
 <html lang="en">
 <head>

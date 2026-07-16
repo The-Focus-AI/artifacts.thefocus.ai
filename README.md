@@ -99,10 +99,13 @@ A **Living Doc** is a collaborative Markdown document an agent publishes so a hu
 
 Publishing a Living Doc returns two URLs: a read-only **View Link** (`/d/{opaque}`) and a capability **Review Link** (`/r/{review}`). Hand the Review Link to whoever should give feedback — no login required. The Review Link opens a WYSIWYG editor (Tiptap) where the Reviewer edits the rendered document directly; edits autosave continuously as Markdown. Selecting text pops up an inline Comment button, and pending agent Suggestions render in the document as tracked changes (strikethrough original, replacement alongside, accept/reject buttons), falling back to sidebar cards when a Suggestion's anchor spans multiple blocks.
 
+**YAML front matter is part of the Living Doc.** `doc publish` uploads the file as-is (including a leading `---` … `---` block). Image rewrite and Doc Asset upload never strip front matter. Prefer a `title:` field there when the file has one; `--title` still overrides. The View Link renders the Markdown body only so fences are not shown as horizontal rules — the stored Markdown and `doc pull` output keep the front matter intact.
+
 The agent drives the loop through `artifacts doc` subcommands, which print JSON:
 
 ```bash
-# Publish a Markdown file; prints { opaqueId, reviewId, viewUrl, reviewUrl, title }
+# Publish a Markdown file (front matter preserved); prints
+# { opaqueId, reviewId, viewUrl, reviewUrl, title }
 THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
 fnox exec -- pnpm artifacts doc publish ./proposal.md --title "Proposal"
 

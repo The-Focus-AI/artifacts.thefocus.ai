@@ -2,6 +2,7 @@ export * from "./auth.js";
 export * from "./diff.js";
 export * from "./doc-asset-collect.js";
 export * from "./doc-asset-rewrite.js";
+export * from "./front-matter.js";
 export * from "./living-doc.js";
 export * from "./local-config.js";
 export * from "./publication.js";
