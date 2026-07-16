@@ -99,9 +99,9 @@ describe("agent readiness discovery resources", () => {
       files: ["SKILL.md"],
     });
     expect(version.name).toBe("artifacts");
-    const packageJson = JSON.parse(
-      await readProjectFile("package.json"),
-    ) as { version: string };
+    const packageJson = JSON.parse(await readProjectFile("package.json")) as {
+      version: string;
+    };
     expect(version.version).toBe(packageJson.version);
     expect(skill).toContain(`Skill version: ${packageJson.version}`);
     expect(version.recommendedInstall).toContain("--skill artifacts");
