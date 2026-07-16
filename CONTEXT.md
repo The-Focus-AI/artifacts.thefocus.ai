@@ -75,3 +75,7 @@ _Avoid_: Annotation, note, review comment
 **Suggestion**:
 A change to a specific span of a Living Doc that an agent proposes in response to feedback. A Suggestion is never applied automatically; the Reviewer accepts or rejects it. Suggestions are how the agent edits a Living Doc, mirroring the Reviewer's direct edits.
 _Avoid_: Edit, patch, diff, tracked change, proposal
+
+**Doc Asset**:
+A binary file hosted with a Living Doc and referenced from its Markdown (for example an image). Doc Assets belong to the Living Doc; they are not an Artifact and are not served as a Publication.
+_Avoid_: Artifact, attachment, media, Publication asset, Artifact Path

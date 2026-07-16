@@ -8,6 +8,7 @@ import {
 } from "./auth.js";
 import { formatUnifiedDiff } from "./diff.js";
 import { createOpaqueId, defaultPublicBaseUrl } from "./publication.js";
+import { type DocAssetContentStore } from "./storage/doc-asset-content.js";
 import {
   type CommentOrigin,
   type LivingDoc,
@@ -16,6 +17,16 @@ import {
   type LivingDocSuggestion,
   type SuggestionStatus,
 } from "./storage/living-doc-metadata.js";
+
+export {
+  contentTypeForDocAssetPath,
+  createVercelBlobDocAssetContentStore,
+  docAssetBlobPath,
+  InMemoryDocAssetContentStore,
+  normalizeDocAssetPath,
+  VercelBlobDocAssetContentStore,
+  type DocAssetContentStore,
+} from "./storage/doc-asset-content.js";
 
 export const livingDocViewPrefix = "/d";
 export const livingDocReviewPrefix = "/r";
@@ -478,19 +489,36 @@ function pickOccurrence(
 export interface ServeLivingDocViewInput {
   request: Request;
   store: LivingDocMetadataStore;
+  contentStore?: DocAssetContentStore;
 }
 
 export async function serveLivingDocViewRequest({
   request,
   store,
+  contentStore,
 }: ServeLivingDocViewInput): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return textResponse("Method not allowed", 405);
   }
-  const opaqueId = opaqueIdFromViewUrl(request.url);
-  if (!opaqueId) return textResponse("Not found", 404);
-  const doc = await store.getByOpaqueId(opaqueId);
+  const route = livingDocViewRouteFromUrl(request.url);
+  if (!route) return textResponse("Not found", 404);
+  const doc = await store.getByOpaqueId(route.opaqueId);
   if (!doc || doc.status !== "active") return textResponse("Not found", 404);
+
+  if (route.assetPath) {
+    if (!contentStore) return textResponse("Not found", 404);
+    const content = await contentStore.read(route.opaqueId, route.assetPath);
+    if (!content) return textResponse("Not found", 404);
+    return new Response(
+      request.method === "HEAD" ? null : new Uint8Array(content.body),
+      {
+        status: 200,
+        headers: livingDocSafetyHeaders({
+          "content-type": content.contentType ?? "application/octet-stream",
+        }),
+      },
+    );
+  }
 
   const wantsJson =
     new URL(request.url).searchParams.get("format") === "json" ||
@@ -715,6 +743,18 @@ export function livingDocViewUrl(
   );
 }
 
+export function livingDocAssetUrl(
+  publicBaseUrl: string,
+  opaqueId: string,
+  assetPath: string,
+): string {
+  const normalized = assetPath.replace(/^\/+/, "");
+  return absoluteLivingDocUrl(
+    publicBaseUrl,
+    `${livingDocViewPrefix}/${opaqueId}/${normalized}`,
+  );
+}
+
 export function livingDocReviewUrl(
   publicBaseUrl: string,
   reviewId: string,
@@ -725,10 +765,20 @@ export function livingDocReviewUrl(
   );
 }
 
-export function opaqueIdFromViewUrl(url: string): string | null {
+export function livingDocViewRouteFromUrl(
+  url: string,
+): { opaqueId: string; assetPath: string } | null {
   const { pathname } = new URL(url);
-  const match = pathname.match(/^\/d\/([^/]+)\/?$/);
-  return match?.[1] ?? null;
+  const match = pathname.match(/^\/d\/([^/]+)(?:\/(.*))?$/);
+  if (!match?.[1]) return null;
+  return {
+    opaqueId: match[1],
+    assetPath: decodeURIComponent(match[2] ?? ""),
+  };
+}
+
+export function opaqueIdFromViewUrl(url: string): string | null {
+  return livingDocViewRouteFromUrl(url)?.opaqueId ?? null;
 }
 
 export function reviewIdFromReviewUrl(url: string): string | null {

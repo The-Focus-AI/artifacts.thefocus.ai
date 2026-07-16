@@ -6,5 +6,6 @@ export * from "./publication.js";
 export * from "./remote-api.js";
 export * from "./local-config.js";
 export * from "./storage/artifact-content.js";
+export * from "./storage/doc-asset-content.js";
 export * from "./storage/living-doc-metadata.js";
 export * from "./storage/publication-metadata.js";
