@@ -235,6 +235,12 @@
       }
       .ProseMirror img {
         max-width: 100%;
+        height: auto;
+        display: inline-block;
+        vertical-align: middle;
+      }
+      .ProseMirror img.ProseMirror-selectednode {
+        outline: 2px solid var(--accent);
       }
       .ProseMirror table {
         border-collapse: collapse;
@@ -457,6 +463,7 @@
         TableRow,
         TableCell,
         TableHeader,
+        Image,
         Markdown,
         Plugin,
         PluginKey,
@@ -718,10 +725,11 @@
         element: document.getElementById("editor"),
         extensions: [
           StarterKit,
-          Table.configure({ resizable: false }),
+          Table,
           TableRow,
           TableHeader,
           TableCell,
+          Image.configure({ inline: true }),
           Markdown.configure({ html: false, linkify: true }),
         ],
         content: "",
