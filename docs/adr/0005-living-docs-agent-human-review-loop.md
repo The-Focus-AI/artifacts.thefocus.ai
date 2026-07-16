@@ -62,3 +62,6 @@ a concept the glossary deliberately defines as read-only static output.
   Reviewer attribution beyond an optional display name are explicitly out of scope for v1.
 - Living Docs reuse the existing opaque-URL scheme and Removal concept, but not the Revision
   Window (which is a Publication update-coalescing mechanism and does not apply here).
+- Stored Living Doc Markdown may include YAML front matter. Publish, Versions, and `doc pull`
+  keep it intact; the View Link may render the body only so `---` fences are not shown as
+  horizontal rules.

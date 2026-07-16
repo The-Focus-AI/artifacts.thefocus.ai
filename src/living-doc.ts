@@ -7,8 +7,13 @@ import {
   type PublisherTokenStore,
 } from "./auth.js";
 import { formatUnifiedDiff } from "./diff.js";
+import { rewriteDocAssetMarkdown } from "./doc-asset-rewrite.js";
 import { deriveMarkdownTitle, markdownBody } from "./front-matter.js";
 import { createOpaqueId, defaultPublicBaseUrl } from "./publication.js";
+import {
+  contentTypeForDocAssetPath,
+  type DocAssetContentStore,
+} from "./storage/doc-asset-content.js";
 import {
   type CommentOrigin,
   type LivingDoc,
@@ -18,6 +23,15 @@ import {
   type SuggestionStatus,
 } from "./storage/living-doc-metadata.js";
 
+export {
+  collectDocAssets,
+  extractRelativeImageRefs,
+  readCollectedDocAsset,
+  toHostedAssetPath,
+  type CollectedDocAsset,
+  type CollectDocAssetsResult,
+} from "./doc-asset-collect.js";
+export { rewriteDocAssetMarkdown } from "./doc-asset-rewrite.js";
 export {
   deriveMarkdownTitle,
   formatFrontMatterFieldValue,
@@ -29,7 +43,15 @@ export {
   splitFrontMatter,
   titleFromFrontMatter,
 } from "./front-matter.js";
-
+export {
+  contentTypeForDocAssetPath,
+  createVercelBlobDocAssetContentStore,
+  docAssetBlobPath,
+  InMemoryDocAssetContentStore,
+  normalizeDocAssetPath,
+  VercelBlobDocAssetContentStore,
+  type DocAssetContentStore,
+} from "./storage/doc-asset-content.js";
 export const livingDocViewPrefix = "/d";
 export const livingDocReviewPrefix = "/r";
 
@@ -50,6 +72,14 @@ function assertTextWithinLimit(text: string, label: string): void {
   }
 }
 
+export interface PublishDocAssetPayload {
+  relativeRef: string;
+  assetPath: string;
+  contentType?: string;
+  /** Raw file bytes (Buffer) or base64 string from the API. */
+  data: Buffer | string;
+}
+
 export interface PublishLivingDocInput {
   markdown: string;
   publisherEmail: string;
@@ -58,6 +88,8 @@ export interface PublishLivingDocInput {
   title?: string | null;
   opaqueId?: string;
   reviewId?: string;
+  contentStore?: DocAssetContentStore;
+  assets?: PublishDocAssetPayload[];
 }
 
 export interface PublishLivingDocResult {
@@ -66,6 +98,7 @@ export interface PublishLivingDocResult {
   title: string | null;
   viewUrl: string;
   reviewUrl: string;
+  uploadedAssets: string[];
 }
 
 export async function publishLivingDoc(
@@ -74,12 +107,62 @@ export async function publishLivingDoc(
   assertMarkdownWithinLimit(input.markdown);
   const opaqueId = input.opaqueId ?? createOpaqueId();
   const reviewId = input.reviewId ?? createReviewId();
+  const assets = input.assets ?? [];
+
+  let markdown = input.markdown;
+  const uploadedAssets: string[] = [];
+  const uploadedLocators: string[] = [];
+
+  if (assets.length > 0) {
+    if (!input.contentStore) {
+      throw new Error(
+        "Doc Asset content store is required when uploading assets.",
+      );
+    }
+    const refToHostedUrl = new Map<string, string>();
+    const uploadedPaths = new Set<string>();
+
+    try {
+      for (const asset of assets) {
+        const body =
+          typeof asset.data === "string"
+            ? Buffer.from(asset.data, "base64")
+            : asset.data;
+        if (!uploadedPaths.has(asset.assetPath)) {
+          const written = await input.contentStore.write({
+            opaqueId,
+            assetPath: asset.assetPath,
+            body,
+            contentType:
+              asset.contentType ?? contentTypeForDocAssetPath(asset.assetPath),
+          });
+          uploadedLocators.push(written.locator);
+          uploadedPaths.add(asset.assetPath);
+          uploadedAssets.push(asset.assetPath);
+        }
+        refToHostedUrl.set(
+          asset.relativeRef,
+          livingDocAssetUrl(input.publicBaseUrl, opaqueId, asset.assetPath),
+        );
+      }
+      markdown = rewriteDocAssetMarkdown(input.markdown, refToHostedUrl);
+      assertMarkdownWithinLimit(markdown);
+    } catch (error) {
+      if (uploadedLocators.length > 0) {
+        await input.contentStore
+          .delete(uploadedLocators)
+          .catch(() => undefined);
+      }
+      throw error;
+    }
+  }
+
   const doc = await input.store.create({
     opaqueId,
     reviewId,
     publisherEmail: input.publisherEmail,
-    currentMarkdown: input.markdown,
-    title: input.title ?? deriveMarkdownTitle(input.markdown),
+    currentMarkdown: markdown,
+    title: input.title ?? deriveMarkdownTitle(markdown),
   });
   return {
     opaqueId: doc.opaqueId,
@@ -87,6 +170,7 @@ export async function publishLivingDoc(
     title: doc.title,
     viewUrl: livingDocViewUrl(input.publicBaseUrl, doc.opaqueId),
     reviewUrl: livingDocReviewUrl(input.publicBaseUrl, doc.reviewId),
+    uploadedAssets,
   };
 }
 
@@ -495,19 +579,36 @@ function pickOccurrence(
 export interface ServeLivingDocViewInput {
   request: Request;
   store: LivingDocMetadataStore;
+  contentStore?: DocAssetContentStore;
 }
 
 export async function serveLivingDocViewRequest({
   request,
   store,
+  contentStore,
 }: ServeLivingDocViewInput): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return textResponse("Method not allowed", 405);
   }
-  const opaqueId = opaqueIdFromViewUrl(request.url);
-  if (!opaqueId) return textResponse("Not found", 404);
-  const doc = await store.getByOpaqueId(opaqueId);
+  const route = livingDocViewRouteFromUrl(request.url);
+  if (!route) return textResponse("Not found", 404);
+  const doc = await store.getByOpaqueId(route.opaqueId);
   if (!doc || doc.status !== "active") return textResponse("Not found", 404);
+
+  if (route.assetPath) {
+    if (!contentStore) return textResponse("Not found", 404);
+    const content = await contentStore.read(route.opaqueId, route.assetPath);
+    if (!content) return textResponse("Not found", 404);
+    return new Response(
+      request.method === "HEAD" ? null : new Uint8Array(content.body),
+      {
+        status: 200,
+        headers: livingDocSafetyHeaders({
+          "content-type": content.contentType ?? "application/octet-stream",
+        }),
+      },
+    );
+  }
 
   const wantsJson =
     new URL(request.url).searchParams.get("format") === "json" ||
@@ -534,6 +635,7 @@ export interface HandleAgentApiInput {
   store: LivingDocMetadataStore;
   tokenStore: PublisherTokenStore;
   publicBaseUrl?: string;
+  contentStore?: DocAssetContentStore;
 }
 
 export async function handleLivingDocAgentApiRequest({
@@ -541,6 +643,7 @@ export async function handleLivingDocAgentApiRequest({
   store,
   tokenStore,
   publicBaseUrl = defaultPublicBaseUrl,
+  contentStore,
 }: HandleAgentApiInput): Promise<Response> {
   try {
     const url = new URL(request.url);
@@ -560,9 +663,37 @@ export async function handleLivingDocAgentApiRequest({
       const body = (await request.json()) as {
         markdown?: string;
         title?: string | null;
+        assets?: Array<{
+          relativeRef?: string;
+          assetPath?: string;
+          contentType?: string;
+          data?: string;
+        }>;
       };
       if (typeof body.markdown !== "string") {
         return jsonResponse({ error: "markdown is required" }, 400);
+      }
+      const assets: PublishDocAssetPayload[] = [];
+      for (const asset of body.assets ?? []) {
+        if (
+          typeof asset.relativeRef !== "string" ||
+          typeof asset.assetPath !== "string" ||
+          typeof asset.data !== "string"
+        ) {
+          return jsonResponse(
+            {
+              error:
+                "each asset requires relativeRef, assetPath, and base64 data",
+            },
+            400,
+          );
+        }
+        assets.push({
+          relativeRef: asset.relativeRef,
+          assetPath: asset.assetPath,
+          contentType: asset.contentType,
+          data: asset.data,
+        });
       }
       return jsonResponse(
         await publishLivingDoc({
@@ -571,6 +702,8 @@ export async function handleLivingDocAgentApiRequest({
           publisherEmail,
           publicBaseUrl,
           store,
+          contentStore,
+          assets,
         }),
       );
     }
@@ -732,6 +865,18 @@ export function livingDocViewUrl(
   );
 }
 
+export function livingDocAssetUrl(
+  publicBaseUrl: string,
+  opaqueId: string,
+  assetPath: string,
+): string {
+  const normalized = assetPath.replace(/^\/+/, "");
+  return absoluteLivingDocUrl(
+    publicBaseUrl,
+    `${livingDocViewPrefix}/${opaqueId}/${normalized}`,
+  );
+}
+
 export function livingDocReviewUrl(
   publicBaseUrl: string,
   reviewId: string,
@@ -742,10 +887,20 @@ export function livingDocReviewUrl(
   );
 }
 
-export function opaqueIdFromViewUrl(url: string): string | null {
+export function livingDocViewRouteFromUrl(
+  url: string,
+): { opaqueId: string; assetPath: string } | null {
   const { pathname } = new URL(url);
-  const match = pathname.match(/^\/d\/([^/]+)\/?$/);
-  return match?.[1] ?? null;
+  const match = pathname.match(/^\/d\/([^/]+)(?:\/(.*))?$/);
+  if (!match?.[1]) return null;
+  return {
+    opaqueId: match[1],
+    assetPath: decodeURIComponent(match[2] ?? ""),
+  };
+}
+
+export function opaqueIdFromViewUrl(url: string): string | null {
+  return livingDocViewRouteFromUrl(url)?.opaqueId ?? null;
 }
 
 export function reviewIdFromReviewUrl(url: string): string | null {
@@ -860,6 +1015,8 @@ const viewPageMarkdownRenderer = new MarkdownIt({
 
 function renderViewPage(doc: LivingDoc): string {
   const title = escapeHtml(doc.title ?? "Living Doc");
+  // Render the body only so YAML fences are not turned into <hr>; the stored
+  // Living Doc Markdown always keeps front matter intact.
   const content = viewPageMarkdownRenderer.render(
     markdownBody(doc.currentMarkdown || ""),
   );

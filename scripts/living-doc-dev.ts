@@ -29,6 +29,7 @@ import {
 import {
   handleLivingDocAgentApiRequest,
   handleReviewApiRequest,
+  InMemoryDocAssetContentStore,
   publishLivingDoc,
   serveLivingDocViewRequest,
 } from "../src/living-doc.js";
@@ -39,6 +40,7 @@ const baseUrl = `http://localhost:${port}`;
 
 const store = new InMemoryLivingDocMetadataStore();
 const tokenStore = new InMemoryPublisherTokenStore();
+const contentStore = new InMemoryDocAssetContentStore();
 
 const { token } = await issuePublisherToken({
   email: "dev@thefocus.ai",
@@ -84,6 +86,7 @@ async function route(
       request: await nodeRequestToWebRequest(request),
       store,
       tokenStore,
+      contentStore,
       publicBaseUrl: baseUrl,
     });
     await writeWebResponseToNodeResponse(webResponse, response);
@@ -106,6 +109,7 @@ async function route(
         headers: request.headers as HeadersInit,
       }),
       store,
+      contentStore,
     });
     await writeWebResponseToNodeResponse(webResponse, response);
     return;

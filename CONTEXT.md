@@ -49,7 +49,7 @@ A human-readable name for a Publication, either extracted from the `<title>` tag
 _Avoid_: name, label (use Title)
 
 **Living Doc**:
-A collaborative Markdown document an agent publishes so a human can edit it and comment on it, and the agent can pull that feedback back to continue the work. Unlike a Publication, a Living Doc is mutable and two-party: it is edited continuously on the human side and revised by the agent through Suggestions. A Living Doc is a distinct concept from a Publication and is never a read-only static Artifact.
+A collaborative Markdown document an agent publishes so a human can edit it and comment on it, and the agent can pull that feedback back to continue the work. Unlike a Publication, a Living Doc is mutable and two-party: it is edited continuously on the human side and revised by the agent through Suggestions. A Living Doc is a distinct concept from a Publication and is never a read-only static Artifact. Stored Markdown may include YAML front matter; publish, Doc Asset rewrite, Versions, and `doc pull` keep that front matter intact (the View Link may render the body only so fences are not shown as content).
 _Avoid_: Document, page, review, draft, artifact, publication
 
 **Reviewer**:
@@ -75,3 +75,7 @@ _Avoid_: Annotation, note, review comment
 **Suggestion**:
 A change to a specific span of a Living Doc that an agent proposes in response to feedback. A Suggestion is never applied automatically; the Reviewer accepts or rejects it. Suggestions are how the agent edits a Living Doc, mirroring the Reviewer's direct edits.
 _Avoid_: Edit, patch, diff, tracked change, proposal
+
+**Doc Asset**:
+A binary file hosted with a Living Doc and referenced from its Markdown (for example an image). Doc Assets belong to the Living Doc; they are not an Artifact and are not served as a Publication.
+_Avoid_: Artifact, attachment, media, Publication asset, Artifact Path

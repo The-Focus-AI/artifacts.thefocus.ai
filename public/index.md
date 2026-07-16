@@ -42,6 +42,8 @@ When the deliverable is a Markdown document to iterate on with a human — a pro
 npx @the-focus-ai/artifacts doc publish ./proposal.md --title "Proposal"
 ```
 
+YAML front matter in the file is preserved on publish and pull (never stripped). The View Link renders the body; use a front-matter `title:` when present, or pass `--title`.
+
 This prints a read-only View Link (`/d/{id}`) and an editable Review Link (`/r/{id}`). Hand the Review Link to the human: it opens a WYSIWYG editor where they edit the rendered document directly (autosaved) and attach comments to selected text. On your next turn, pull their feedback and respond with span-anchored Suggestions they accept or reject inline:
 
 ```bash

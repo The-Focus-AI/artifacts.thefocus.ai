@@ -30,7 +30,10 @@ import {
   type RemovePublicationResult,
 } from "./publication.js";
 import {
+  collectDocAssets,
+  contentTypeForDocAssetPath,
   opaqueIdFromViewReference,
+  readCollectedDocAsset,
   type RespondReplyInput,
   type RespondSuggestionInput,
 } from "./living-doc.js";
@@ -315,10 +318,45 @@ async function runDocCommand(
 
   if (subcommand === "publish") {
     if (!target) throw new Error("doc publish requires a Markdown file path.");
-    const markdown = await readFile(target, "utf-8");
+    const markdownPath = await realpath(target);
+    const markdown = await readFile(markdownPath, "utf-8");
+    const force = options.force === "true";
+    const collected = await collectDocAssets({
+      markdown,
+      markdownPath,
+      force,
+    });
+    const bytesByAssetPath = new Map<string, string>();
+    const assets: Array<{
+      relativeRef: string;
+      assetPath: string;
+      data: string;
+      contentType: string;
+    }> = [];
+    for (const asset of collected.assets) {
+      let data = bytesByAssetPath.get(asset.assetPath);
+      if (!data) {
+        data = (await readCollectedDocAsset(asset)).toString("base64");
+        bytesByAssetPath.set(asset.assetPath, data);
+      }
+      assets.push({
+        relativeRef: asset.relativeRef,
+        assetPath: asset.assetPath,
+        data,
+        contentType: contentTypeForDocAssetPath(asset.assetPath),
+      });
+    }
     const result = await client.publishDoc(token.token, markdown, {
       title: options.title,
+      assets,
     });
+    if (collected.missing.length > 0) {
+      context.stderr.write(
+        `Warning: skipped missing Doc Assets (--force):\n${collected.missing
+          .map((path) => `  - ${path}`)
+          .join("\n")}\n`,
+      );
+    }
     stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return 0;
   }
@@ -527,7 +565,7 @@ function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
       "  npx @the-focus-ai/artifacts list [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts whoami [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts logout\n" +
-      '  npx @the-focus-ai/artifacts doc publish <file.md> [--title "My Doc"] [--base-url ...]\n' +
+      '  npx @the-focus-ai/artifacts doc publish <file.md> [--title "My Doc"] [--force] [--base-url ...]\n' +
       "  npx @the-focus-ai/artifacts doc pull <Living Doc View URL or id> [--base-url ...]\n" +
       "  npx @the-focus-ai/artifacts doc respond <Living Doc View URL or id> [--body feedback.json] [--base-url ...]\n" +
       "  npx @the-focus-ai/artifacts doc list [--base-url ...]\n" +
