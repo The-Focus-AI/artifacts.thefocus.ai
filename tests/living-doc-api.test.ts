@@ -167,6 +167,33 @@ Paragraph.
     expect(json.markdown).toContain("draft: true");
   });
 
+  it("renders GFM tables in the HTML view", async () => {
+    const { agent, store, token } = await setup();
+    const published = (await (
+      await agent(
+        post("https://x/api/doc?action=publish", token, {
+          markdown: `# Skills
+
+| Skill | Role |
+| --- | --- |
+| grill-me | challenge plans |
+| to-prd | write PRDs |
+`,
+        }),
+      )
+    ).json()) as { opaqueId: string };
+
+    const html = await serveLivingDocViewRequest({
+      request: new Request(`https://x/d/${published.opaqueId}`),
+      store,
+    });
+    const page = await html.text();
+    expect(page).toContain("<table>");
+    expect(page).toContain("<th>Skill</th>");
+    expect(page).toContain("<td>grill-me</td>");
+    expect(page).toContain("border-collapse");
+  });
+
   it("removes a Living Doc over the API and the view goes 404", async () => {
     const { agent, store, token } = await setup();
     const published = (await (

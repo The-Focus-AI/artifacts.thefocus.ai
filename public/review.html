@@ -236,6 +236,29 @@
       .ProseMirror img {
         max-width: 100%;
       }
+      .ProseMirror table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+        overflow: hidden;
+        table-layout: fixed;
+      }
+      .ProseMirror td,
+      .ProseMirror th {
+        border: 1px solid var(--border);
+        padding: 0.4rem 0.55rem;
+        vertical-align: top;
+        position: relative;
+        min-width: 2.5rem;
+      }
+      .ProseMirror th {
+        background: var(--panel);
+        font-weight: 600;
+        text-align: left;
+      }
+      .ProseMirror .selectedCell {
+        background: color-mix(in srgb, var(--accent) 12%, transparent);
+      }
       .sidebar {
         background: var(--panel);
         border-right: none;
@@ -430,6 +453,10 @@
       import {
         Editor,
         StarterKit,
+        Table,
+        TableRow,
+        TableCell,
+        TableHeader,
         Markdown,
         Plugin,
         PluginKey,
@@ -691,6 +718,10 @@
         element: document.getElementById("editor"),
         extensions: [
           StarterKit,
+          Table.configure({ resizable: false }),
+          TableRow,
+          TableHeader,
+          TableCell,
           Markdown.configure({ html: false, linkify: true }),
         ],
         content: "",
