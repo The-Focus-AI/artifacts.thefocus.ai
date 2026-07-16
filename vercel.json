@@ -78,6 +78,10 @@
       "destination": "/api/d/:opaque"
     },
     {
+      "source": "/d/:opaque/:path*",
+      "destination": "/api/d/:opaque?path=:path*"
+    },
+    {
       "source": "/r/:review",
       "destination": "/review.html"
     },

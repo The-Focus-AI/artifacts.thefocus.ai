@@ -119,11 +119,18 @@ export class HttpArtifactApiClient implements ArtifactApiClient {
   }
 }
 
+export interface PublishDocAssetWire {
+  relativeRef: string;
+  assetPath: string;
+  contentType?: string;
+  data: string;
+}
+
 export interface LivingDocApiClient {
   publishDoc(
     token: string,
     markdown: string,
-    options?: { title?: string },
+    options?: { title?: string; assets?: PublishDocAssetWire[] },
   ): Promise<PublishLivingDocResult>;
   pullDoc(token: string, opaqueId: string): Promise<PullLivingDocResult>;
   respondDoc(
@@ -147,12 +154,16 @@ export class HttpLivingDocApiClient implements LivingDocApiClient {
   async publishDoc(
     token: string,
     markdown: string,
-    options: { title?: string } = {},
+    options: { title?: string; assets?: PublishDocAssetWire[] } = {},
   ): Promise<PublishLivingDocResult> {
     const response = await this.request("/api/doc?action=publish", token, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ markdown, title: options.title }),
+      body: JSON.stringify({
+        markdown,
+        title: options.title,
+        assets: options.assets,
+      }),
     });
     return (await response.json()) as PublishLivingDocResult;
   }

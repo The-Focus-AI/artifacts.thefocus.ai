@@ -1,6 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
+  serveLivingDocViewRequest,
+  type ServeLivingDocViewInput,
+} from "./living-doc.js";
+import {
   servePublicationRequest,
   type ServePublicationInput,
 } from "./publication.js";
@@ -32,6 +36,22 @@ export async function servePublicationNodeRequest(
     method: nodeRequest.method,
   });
   const response = await servePublicationRequest({
+    request,
+    ...dependencies,
+  });
+  await writeWebResponseToNodeResponse(response, nodeResponse);
+}
+
+export async function serveLivingDocViewNodeRequest(
+  nodeRequest: IncomingMessage,
+  nodeResponse: ServerResponse,
+  dependencies: Omit<ServeLivingDocViewInput, "request">,
+): Promise<void> {
+  const request = new Request(livingDocViewRequestUrl(nodeRequest), {
+    method: nodeRequest.method,
+    headers: nodeRequest.headers as HeadersInit,
+  });
+  const response = await serveLivingDocViewRequest({
     request,
     ...dependencies,
   });
@@ -110,4 +130,43 @@ function queryPathFromVercelCatchAll(path: unknown): string {
 
 function isString(value: unknown): value is string {
   return typeof value === "string";
+}
+
+export function livingDocViewRequestUrl(request: IncomingMessage): string {
+  const host = request.headers.host ?? "localhost";
+  const protocol = request.headers["x-forwarded-proto"] ?? "https";
+  const viewPath = livingDocPathFromVercelRequest(request);
+  const search = new URL(request.url ?? "/", "https://localhost").search;
+  return `${protocol}://${host}/d/${viewPath}${search}`;
+}
+
+function livingDocPathFromVercelRequest(request: IncomingMessage): string {
+  const queryOpaque = (
+    request as IncomingMessage & {
+      query?: { opaque?: unknown; path?: unknown };
+    }
+  ).query?.opaque;
+  const queryPath = (
+    request as IncomingMessage & {
+      query?: { opaque?: unknown; path?: unknown };
+    }
+  ).query?.path;
+  if (typeof queryOpaque === "string") {
+    return [queryOpaque, queryPathFromVercelCatchAll(queryPath)]
+      .filter(Boolean)
+      .join("/");
+  }
+  if (Array.isArray(queryOpaque) && typeof queryOpaque[0] === "string") {
+    return [queryOpaque[0], queryPathFromVercelCatchAll(queryPath)]
+      .filter(Boolean)
+      .join("/");
+  }
+
+  const pathname = new URL(request.url ?? "/", "https://localhost").pathname;
+  const apiPrefix = "/api/d/";
+  if (pathname.startsWith(apiPrefix)) return pathname.slice(apiPrefix.length);
+  const publicPrefix = "/d/";
+  if (pathname.startsWith(publicPrefix))
+    return pathname.slice(publicPrefix.length);
+  return pathname.split("/").filter(Boolean).at(-1) ?? "";
 }
