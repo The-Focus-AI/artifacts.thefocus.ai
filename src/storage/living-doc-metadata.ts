@@ -99,7 +99,11 @@ export interface LivingDocMetadataStore {
   create(input: CreateLivingDocInput): Promise<LivingDoc>;
   getByOpaqueId(opaqueId: string): Promise<LivingDoc | null>;
   getByReviewId(reviewId: string): Promise<LivingDoc | null>;
-  updateMarkdown(opaqueId: string, markdown: string): Promise<LivingDoc | null>;
+  updateMarkdown(
+    opaqueId: string,
+    markdown: string,
+    options?: { title?: string | null },
+  ): Promise<LivingDoc | null>;
   setLatestVersionNumber(
     opaqueId: string,
     versionNumber: number,
@@ -176,10 +180,18 @@ export class InMemoryLivingDocMetadataStore implements LivingDocMetadataStore {
   async updateMarkdown(
     opaqueId: string,
     markdown: string,
+    options?: { title?: string | null },
   ): Promise<LivingDoc | null> {
     const doc = this.docs.get(opaqueId);
     if (!doc) return null;
-    const next = { ...doc, currentMarkdown: markdown, updatedAt: this.now() };
+    const next = {
+      ...doc,
+      currentMarkdown: markdown,
+      ...(options && Object.hasOwn(options, "title")
+        ? { title: options.title ?? null }
+        : {}),
+      updatedAt: this.now(),
+    };
     this.docs.set(opaqueId, next);
     return cloneDoc(next);
   }
@@ -382,15 +394,25 @@ export class PostgresLivingDocMetadataStore implements LivingDocMetadataStore {
   async updateMarkdown(
     opaqueId: string,
     markdown: string,
+    options?: { title?: string | null },
   ): Promise<LivingDoc | null> {
     const result = await this.sql.query<LivingDocRow>(
-      `
-        update living_docs
-        set current_markdown = $2, updated_at = $3
-        where opaque_id = $1
-        returning *
-      `,
-      [opaqueId, markdown, this.now()],
+      Object.hasOwn(options ?? {}, "title")
+        ? `
+          update living_docs
+          set current_markdown = $2, title = $3, updated_at = $4
+          where opaque_id = $1
+          returning *
+        `
+        : `
+          update living_docs
+          set current_markdown = $2, updated_at = $3
+          where opaque_id = $1
+          returning *
+        `,
+      Object.hasOwn(options ?? {}, "title")
+        ? [opaqueId, markdown, options?.title ?? null, this.now()]
+        : [opaqueId, markdown, this.now()],
     );
     return result.rows[0] ? mapDocRow(result.rows[0]) : null;
   }

@@ -4,6 +4,20 @@
 // without any CDN (see ADR 0005: self-contained static editor bundle).
 export { Editor } from "@tiptap/core";
 export { default as StarterKit } from "@tiptap/starter-kit";
+export { ReviewTable as Table } from "./review-table.ts";
+export { default as TableRow } from "@tiptap/extension-table-row";
+export { default as TableCell } from "@tiptap/extension-table-cell";
+export { default as TableHeader } from "@tiptap/extension-table-header";
+export { default as Image } from "@tiptap/extension-image";
 export { Markdown } from "tiptap-markdown";
 export { Plugin, PluginKey } from "@tiptap/pm/state";
 export { Decoration, DecorationSet } from "@tiptap/pm/view";
+export {
+  deriveMarkdownTitle,
+  formatFrontMatterFieldValue,
+  joinFrontMatter,
+  parseFrontMatterData,
+  parseFrontMatterFieldValue,
+  serializeFrontMatterData,
+  splitFrontMatter,
+} from "../src/front-matter.ts";

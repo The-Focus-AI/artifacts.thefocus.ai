@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   deriveMarkdownTitle,
+  formatFrontMatterFieldValue,
   joinFrontMatter,
   markdownBody,
+  parseFrontMatterData,
+  parseFrontMatterFieldValue,
   publishLivingDoc,
   rewriteDocAssetMarkdown,
+  serializeFrontMatterData,
   serveLivingDocViewRequest,
   splitFrontMatter,
   titleFromFrontMatter,
@@ -35,6 +39,9 @@ Body text.
       matter: null,
       body: "# Just a heading\n",
     });
+    expect(joinFrontMatter(null, "# Just a heading\n")).toBe(
+      "# Just a heading\n",
+    );
   });
 
   it("does not treat a leading horizontal rule as front matter", () => {
@@ -45,7 +52,11 @@ Body text.
     });
   });
 
-  it("prefers front-matter title over body heading", () => {
+  it("drops empty matter when joining", () => {
+    expect(joinFrontMatter("  \n", "# Body\n")).toBe("# Body\n");
+  });
+
+  it("parses title from front matter and ignores fences for body title", () => {
     expect(
       deriveMarkdownTitle(`---
 title: From Matter
@@ -53,11 +64,21 @@ title: From Matter
 # From Heading
 `),
     ).toBe("From Matter");
+
+    expect(
+      deriveMarkdownTitle(`---
+status: draft
+---
+# From Heading
+`),
+    ).toBe("From Heading");
+
+    expect(deriveMarkdownTitle("---\nstatus: draft\n---\n")).toBeNull();
     expect(titleFromFrontMatter("title: Hello")).toBe("Hello");
-    expect(titleFromFrontMatter('title: "Quoted"')).toBe("Quoted");
+    expect(parseFrontMatterData("title: Hello")).toEqual({ title: "Hello" });
   });
 
-  it("exposes the body for rendering only", () => {
+  it("exposes the body for rendering", () => {
     expect(
       markdownBody(`---
 title: Hidden
@@ -65,6 +86,20 @@ title: Hidden
 Visible
 `),
     ).toBe("Visible\n");
+  });
+
+  it("round-trips structured field values", () => {
+    const data = {
+      title: "Proposal",
+      draft: true,
+      count: 3,
+      tags: ["a", "b"],
+    };
+    const matter = serializeFrontMatterData(data);
+    expect(parseFrontMatterData(matter)).toEqual(data);
+    expect(formatFrontMatterFieldValue(data.tags)).toContain("a");
+    expect(parseFrontMatterFieldValue("true")).toBe(true);
+    expect(parseFrontMatterFieldValue("[a, b]")).toEqual(["a", "b"]);
   });
 });
 

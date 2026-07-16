@@ -34,8 +34,12 @@ export {
 export { rewriteDocAssetMarkdown } from "./doc-asset-rewrite.js";
 export {
   deriveMarkdownTitle,
+  formatFrontMatterFieldValue,
   joinFrontMatter,
   markdownBody,
+  parseFrontMatterData,
+  parseFrontMatterFieldValue,
+  serializeFrontMatterData,
   splitFrontMatter,
   titleFromFrontMatter,
 } from "./front-matter.js";
@@ -427,7 +431,9 @@ export async function saveReviewMarkdown(
 ): Promise<LivingDoc> {
   assertMarkdownWithinLimit(markdown);
   const doc = await requireActiveDocByReviewId(store, reviewId);
-  const updated = await store.updateMarkdown(doc.opaqueId, markdown);
+  const updated = await store.updateMarkdown(doc.opaqueId, markdown, {
+    title: deriveMarkdownTitle(markdown),
+  });
   if (!updated) throw new Error("Living Doc could not be updated.");
   return updated;
 }
@@ -518,7 +524,9 @@ export async function decideSuggestion(
         markdown.slice(0, index) +
         suggestion.replacement +
         markdown.slice(index + suggestion.anchorQuote.length);
-      await store.updateMarkdown(doc.opaqueId, markdown);
+      await store.updateMarkdown(doc.opaqueId, markdown, {
+        title: deriveMarkdownTitle(markdown),
+      });
       applied = true;
     } else {
       return {
@@ -1026,6 +1034,9 @@ function renderViewPage(doc: LivingDoc): string {
   pre { overflow-x: auto; padding: 1rem; background: rgba(127,127,127,0.12); border-radius: 8px; }
   code { font-family: ui-monospace, monospace; }
   img { max-width: 100%; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid rgba(127,127,127,0.35); padding: 0.4rem 0.55rem; vertical-align: top; }
+  th { text-align: left; background: rgba(127,127,127,0.12); }
   .doc-meta { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
 </style>
 </head>

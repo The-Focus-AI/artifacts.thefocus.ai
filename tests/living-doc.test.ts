@@ -43,6 +43,36 @@ describe("Living Doc round-trip", () => {
     expect(result.title).toBe("Proposal");
   });
 
+  it("derives the title from YAML front matter and keeps it through saves", async () => {
+    const store = new InMemoryLivingDocMetadataStore();
+    const markdown = `---
+title: From Front Matter
+status: draft
+---
+# Body Heading
+
+Hello.
+`;
+    const result = await publish(store, markdown);
+    expect(result.title).toBe("From Front Matter");
+
+    const updated = await saveReviewMarkdown(
+      store,
+      "reviewSecret1",
+      `---
+title: Renamed Doc
+status: draft
+---
+# Body Heading
+
+Hello, edited.
+`,
+    );
+    expect(updated.title).toBe("Renamed Doc");
+    expect(updated.currentMarkdown).toContain("title: Renamed Doc");
+    expect(updated.currentMarkdown).toContain("Hello, edited.");
+  });
+
   it("lets a Reviewer edit and comment, then the agent pulls a Version with a diff", async () => {
     const store = new InMemoryLivingDocMetadataStore();
     await publish(store, "# Proposal\n\nFirst draft.");

@@ -90,6 +90,114 @@
         margin: 0 auto;
         padding: 1.5rem 1.5rem 6rem;
       }
+      .front-matter {
+        max-width: 46rem;
+        margin: 0 auto;
+        padding: 1rem 1.5rem 0;
+      }
+      .front-matter[hidden] {
+        display: none;
+      }
+      .front-matter-panel {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+        overflow: hidden;
+      }
+      .front-matter-head {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.45rem 0.7rem;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+      }
+      .front-matter-head .spacer {
+        flex: 1;
+      }
+      .front-matter-head button {
+        font-size: 0.75rem;
+        text-transform: none;
+        letter-spacing: 0;
+        padding: 0.15rem 0.45rem;
+      }
+      .front-matter-fields {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        padding: 0.55rem 0.7rem 0.7rem;
+      }
+      .fm-row {
+        display: grid;
+        grid-template-columns: minmax(6rem, 9rem) 1fr auto;
+        gap: 0.4rem;
+        align-items: start;
+      }
+      .fm-row input,
+      .fm-row textarea {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--fg);
+        padding: 0.3rem 0.45rem;
+        font: inherit;
+        font-size: 0.88rem;
+      }
+      .fm-row input.key {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.8rem;
+      }
+      .fm-row textarea {
+        min-height: 2.2rem;
+        resize: vertical;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.8rem;
+        line-height: 1.4;
+      }
+      .fm-row .fm-remove-field {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        padding: 0.25rem 0.35rem;
+      }
+      .fm-row .fm-remove-field:hover {
+        color: var(--remove);
+      }
+      .fm-raw {
+        width: 100%;
+        min-height: 7rem;
+        border: none;
+        border-top: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--fg);
+        padding: 0.7rem;
+        font:
+          0.82rem/1.45 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        resize: vertical;
+      }
+      .fm-error {
+        color: var(--remove);
+        font-size: 0.75rem;
+        padding: 0 0.7rem 0.55rem;
+      }
+      .fm-error[hidden] {
+        display: none;
+      }
+      .fm-add-wrap {
+        padding: 0.55rem 0.9rem 0.9rem;
+        max-width: 46rem;
+        margin: 0 auto;
+      }
+      .fm-add-wrap[hidden] {
+        display: none;
+      }
       .ProseMirror {
         outline: none;
         min-height: 60vh;
@@ -127,6 +235,35 @@
       }
       .ProseMirror img {
         max-width: 100%;
+        height: auto;
+        display: inline-block;
+        vertical-align: middle;
+      }
+      .ProseMirror img.ProseMirror-selectednode {
+        outline: 2px solid var(--accent);
+      }
+      .ProseMirror table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+        overflow: hidden;
+        table-layout: fixed;
+      }
+      .ProseMirror td,
+      .ProseMirror th {
+        border: 1px solid var(--border);
+        padding: 0.4rem 0.55rem;
+        vertical-align: top;
+        position: relative;
+        min-width: 2.5rem;
+      }
+      .ProseMirror th {
+        background: var(--panel);
+        font-weight: 600;
+        text-align: left;
+      }
+      .ProseMirror .selectedCell {
+        background: color-mix(in srgb, var(--accent) 12%, transparent);
       }
       .sidebar {
         background: var(--panel);
@@ -266,6 +403,31 @@
     <div class="layout">
       <div class="pane" id="editor-pane">
         <div class="pane-head">Document</div>
+        <div class="fm-add-wrap" id="fm-add-wrap" hidden>
+          <button type="button" id="fm-add">Add front matter</button>
+        </div>
+        <div class="front-matter" id="front-matter" hidden>
+          <div class="front-matter-panel">
+            <div class="front-matter-head">
+              <span>Front matter</span>
+              <span class="spacer"></span>
+              <button type="button" id="fm-mode-toggle">Edit as YAML</button>
+              <button type="button" id="fm-clear">Remove</button>
+            </div>
+            <div class="front-matter-fields" id="fm-fields"></div>
+            <textarea
+              class="fm-raw"
+              id="fm-raw"
+              hidden
+              spellcheck="false"
+              aria-label="Front matter YAML"
+            ></textarea>
+            <div class="fm-error" id="fm-error" hidden></div>
+            <div class="front-matter-fields" id="fm-add-field-row">
+              <button type="button" id="fm-add-field">Add field</button>
+            </div>
+          </div>
+        </div>
         <div id="editor"></div>
       </div>
       <div class="pane sidebar">
@@ -297,18 +459,41 @@
       import {
         Editor,
         StarterKit,
+        Table,
+        TableRow,
+        TableCell,
+        TableHeader,
+        Image,
         Markdown,
         Plugin,
         PluginKey,
         Decoration,
         DecorationSet,
+        deriveMarkdownTitle,
+        formatFrontMatterFieldValue,
+        joinFrontMatter,
+        parseFrontMatterData,
+        parseFrontMatterFieldValue,
+        serializeFrontMatterData,
+        splitFrontMatter,
       } from "/vendor/review-editor.js";
 
       const reviewId = location.pathname.split("/").filter(Boolean)[1] ?? "";
       const statusEl = document.getElementById("status");
+      const titleEl = document.getElementById("title");
+      const fmRoot = document.getElementById("front-matter");
+      const fmFields = document.getElementById("fm-fields");
+      const fmRaw = document.getElementById("fm-raw");
+      const fmError = document.getElementById("fm-error");
+      const fmAddWrap = document.getElementById("fm-add-wrap");
+      const fmAddFieldRow = document.getElementById("fm-add-field-row");
+      const fmModeToggle = document.getElementById("fm-mode-toggle");
 
       let saveTimer = null;
       let applyingRemote = false;
+      // null = no front matter; otherwise the editable YAML source of truth.
+      let frontMatterText = null;
+      let frontMatterMode = "fields"; // "fields" | "raw"
 
       function setStatus(text) {
         statusEl.textContent = text;
@@ -329,14 +514,22 @@
         return response.json();
       }
 
+      function currentMarkdown() {
+        return joinFrontMatter(
+          frontMatterText,
+          editor.storage.markdown.getMarkdown(),
+        );
+      }
+
       function scheduleSave() {
         if (saveTimer) clearTimeout(saveTimer);
         setStatus("Editing…");
         saveTimer = setTimeout(async () => {
           try {
-            await api("save", "POST", {
-              markdown: editor.storage.markdown.getMarkdown(),
-            });
+            const markdown = currentMarkdown();
+            await api("save", "POST", { markdown });
+            const derived = deriveMarkdownTitle(markdown);
+            if (derived) titleEl.textContent = derived;
             setStatus("Saved");
           } catch (error) {
             setStatus(`Save failed: ${error.message}`);
@@ -344,10 +537,199 @@
         }, 700);
       }
 
+      function setFmError(message) {
+        if (!message) {
+          fmError.hidden = true;
+          fmError.textContent = "";
+          return;
+        }
+        fmError.hidden = false;
+        fmError.textContent = message;
+      }
+
+      function readFieldsIntoMatter() {
+        const data = {};
+        let emptyKeys = 0;
+        for (const row of fmFields.querySelectorAll(".fm-row")) {
+          const key = row.querySelector(".key").value.trim();
+          const valueRaw = row.querySelector(".value").value;
+          if (!key) {
+            emptyKeys += 1;
+            continue;
+          }
+          data[key] = parseFrontMatterFieldValue(valueRaw);
+        }
+        if (Object.keys(data).length === 0 && emptyKeys > 0) {
+          return "";
+        }
+        return serializeFrontMatterData(data);
+      }
+
+      function syncMatterFromUi() {
+        if (frontMatterText === null) return;
+        if (frontMatterMode === "raw") {
+          frontMatterText = fmRaw.value;
+          const parsed = parseFrontMatterData(frontMatterText);
+          setFmError(
+            parsed || frontMatterText.trim().length === 0
+              ? null
+              : "YAML could not be parsed; it will still be saved as written.",
+          );
+          return;
+        }
+        try {
+          frontMatterText = readFieldsIntoMatter();
+          setFmError(null);
+        } catch (error) {
+          setFmError(error.message || "Could not serialize front matter.");
+        }
+      }
+
+      function renderFieldRows(data) {
+        fmFields.innerHTML = "";
+        const entries = Object.entries(data);
+        if (entries.length === 0) {
+          addFieldRow("", "");
+          return;
+        }
+        for (const [key, value] of entries) {
+          addFieldRow(key, formatFrontMatterFieldValue(value));
+        }
+      }
+
+      function addFieldRow(key, value) {
+        const row = document.createElement("div");
+        row.className = "fm-row";
+        const keyInput = document.createElement("input");
+        keyInput.className = "key";
+        keyInput.type = "text";
+        keyInput.placeholder = "key";
+        keyInput.spellcheck = false;
+        keyInput.value = key;
+        const valueInput = document.createElement("textarea");
+        valueInput.className = "value";
+        valueInput.rows = 1;
+        valueInput.placeholder = "value";
+        valueInput.spellcheck = false;
+        valueInput.value = value;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "fm-remove-field";
+        remove.title = "Remove field";
+        remove.textContent = "×";
+        remove.addEventListener("click", () => {
+          row.remove();
+          if (fmFields.children.length === 0) addFieldRow("", "");
+          onFrontMatterEdit();
+        });
+        const onEdit = () => onFrontMatterEdit();
+        keyInput.addEventListener("input", onEdit);
+        valueInput.addEventListener("input", onEdit);
+        row.append(keyInput, valueInput, remove);
+        fmFields.append(row);
+      }
+
+      function showFrontMatterUi(hasMatter) {
+        fmRoot.hidden = !hasMatter;
+        fmAddWrap.hidden = hasMatter;
+      }
+
+      function setFrontMatterMode(mode) {
+        frontMatterMode = mode;
+        const raw = mode === "raw";
+        fmRaw.hidden = !raw;
+        fmFields.hidden = raw;
+        fmAddFieldRow.hidden = raw;
+        fmModeToggle.textContent = raw ? "Edit fields" : "Edit as YAML";
+      }
+
+      function loadFrontMatter(matter) {
+        frontMatterText = matter;
+        if (matter === null) {
+          showFrontMatterUi(false);
+          setFmError(null);
+          fmRaw.value = "";
+          fmFields.innerHTML = "";
+          return;
+        }
+        showFrontMatterUi(true);
+        fmRaw.value = matter;
+        const data = parseFrontMatterData(matter);
+        if (data) {
+          setFrontMatterMode("fields");
+          renderFieldRows(data);
+          setFmError(null);
+        } else {
+          setFrontMatterMode("raw");
+          setFmError(
+            matter.trim().length === 0
+              ? null
+              : "YAML could not be parsed; edit as YAML or fix the syntax.",
+          );
+        }
+      }
+
+      function onFrontMatterEdit() {
+        if (applyingRemote) return;
+        syncMatterFromUi();
+        scheduleSave();
+      }
+
+      document.getElementById("fm-add").addEventListener("click", () => {
+        frontMatterText = "title: ";
+        showFrontMatterUi(true);
+        setFrontMatterMode("fields");
+        renderFieldRows({ title: "" });
+        setFmError(null);
+        const keyInput = fmFields.querySelector(".key");
+        keyInput?.focus();
+        scheduleSave();
+      });
+
+      document.getElementById("fm-clear").addEventListener("click", () => {
+        frontMatterText = null;
+        showFrontMatterUi(false);
+        setFmError(null);
+        fmRaw.value = "";
+        fmFields.innerHTML = "";
+        scheduleSave();
+      });
+
+      document.getElementById("fm-add-field").addEventListener("click", () => {
+        addFieldRow("", "");
+        const rows = fmFields.querySelectorAll(".key");
+        rows[rows.length - 1]?.focus();
+      });
+
+      fmModeToggle.addEventListener("click", () => {
+        if (frontMatterMode === "fields") {
+          syncMatterFromUi();
+          fmRaw.value = frontMatterText ?? "";
+          setFrontMatterMode("raw");
+        } else {
+          const data = parseFrontMatterData(fmRaw.value);
+          if (!data && fmRaw.value.trim().length > 0) {
+            setFmError("Fix the YAML before switching to field editing.");
+            return;
+          }
+          frontMatterText = fmRaw.value;
+          setFrontMatterMode("fields");
+          renderFieldRows(data ?? { title: "" });
+          setFmError(null);
+        }
+      });
+
+      fmRaw.addEventListener("input", onFrontMatterEdit);
+
       const editor = new Editor({
         element: document.getElementById("editor"),
         extensions: [
           StarterKit,
+          Table,
+          TableRow,
+          TableHeader,
+          TableCell,
+          Image.configure({ inline: true }),
           Markdown.configure({ html: false, linkify: true }),
         ],
         content: "",
@@ -369,7 +751,9 @@
 
       function setDocMarkdown(text) {
         applyingRemote = true;
-        editor.commands.setContent(text, false);
+        const { matter, body } = splitFrontMatter(text);
+        loadFrontMatter(matter);
+        editor.commands.setContent(body, false);
         applyingRemote = false;
       }
 
@@ -601,8 +985,7 @@
 
       async function refresh() {
         const state = await api("state", "GET");
-        document.getElementById("title").textContent =
-          state.title || "Living Doc";
+        titleEl.textContent = state.title || "Living Doc";
         inlineSuggestions = state.pendingSuggestions;
         // Repaint decorations against the current document.
         editor.view.dispatch(editor.state.tr);

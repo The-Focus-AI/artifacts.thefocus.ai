@@ -128,6 +128,72 @@ describe("Living Doc agent API", () => {
     expect(json.markdown).toContain("Visible");
   });
 
+  it("strips YAML front matter from the HTML view but keeps it in JSON", async () => {
+    const { agent, store, token } = await setup();
+    const published = (await (
+      await agent(
+        post("https://x/api/doc?action=publish", token, {
+          markdown: `---
+title: Meta Title
+draft: true
+---
+# Body Title
+
+Paragraph.
+`,
+        }),
+      )
+    ).json()) as { opaqueId: string; title: string };
+
+    expect(published.title).toBe("Meta Title");
+
+    const html = await serveLivingDocViewRequest({
+      request: new Request(`https://x/d/${published.opaqueId}`),
+      store,
+    });
+    const page = await html.text();
+    expect(page).toContain("<title>Meta Title</title>");
+    expect(page).toContain("<h1>Body Title</h1>");
+    expect(page).not.toContain("draft");
+    expect(page).not.toContain("<hr");
+
+    const json = (await (
+      await serveLivingDocViewRequest({
+        request: new Request(`https://x/d/${published.opaqueId}?format=json`),
+        store,
+      })
+    ).json()) as { markdown: string; title: string | null };
+    expect(json.title).toBe("Meta Title");
+    expect(json.markdown).toContain("draft: true");
+  });
+
+  it("renders GFM tables in the HTML view", async () => {
+    const { agent, store, token } = await setup();
+    const published = (await (
+      await agent(
+        post("https://x/api/doc?action=publish", token, {
+          markdown: `# Skills
+
+| Skill | Role |
+| --- | --- |
+| grill-me | challenge plans |
+| to-prd | write PRDs |
+`,
+        }),
+      )
+    ).json()) as { opaqueId: string };
+
+    const html = await serveLivingDocViewRequest({
+      request: new Request(`https://x/d/${published.opaqueId}`),
+      store,
+    });
+    const page = await html.text();
+    expect(page).toContain("<table>");
+    expect(page).toContain("<th>Skill</th>");
+    expect(page).toContain("<td>grill-me</td>");
+    expect(page).toContain("border-collapse");
+  });
+
   it("removes a Living Doc over the API and the view goes 404", async () => {
     const { agent, store, token } = await setup();
     const published = (await (
