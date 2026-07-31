@@ -142,9 +142,28 @@ Suggestions are never applied automatically — the Reviewer accepts or rejects 
 
 ## MCP endpoint
 
-`https://artifacts.thefocus.ai/mcp` exposes the same publishing and Living Doc operations as MCP tools, for agents that speak MCP instead of shelling out to the CLI. It is an addition to the CLI, not a replacement — see [docs/adr/0007-remote-mcp-endpoint-over-publisher-tokens.md](docs/adr/0007-remote-mcp-endpoint-over-publisher-tokens.md).
+`https://artifacts.thefocus.ai/mcp` exposes the same publishing and Living Doc operations as MCP tools, for agents that speak MCP instead of shelling out to the CLI. It is an addition to the CLI, not a replacement — see [docs/adr/0007-remote-mcp-endpoint-over-publisher-tokens.md](docs/adr/0007-remote-mcp-endpoint-over-publisher-tokens.md) and [docs/adr/0008-mcp-clients-log-in-with-oauth.md](docs/adr/0008-mcp-clients-log-in-with-oauth.md).
 
-Mint a token for the client, then connect:
+**Log in through the browser.** Point any MCP client at the URL with no credential and it runs the OAuth flow itself — discovers the authorization server, registers, opens your browser to sign in with Clerk, and shows a consent page naming the client:
+
+```bash
+claude mcp add --transport http artifacts https://artifacts.thefocus.ai/mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "artifacts": {
+      "type": "http",
+      "url": "https://artifacts.thefocus.ai/mcp"
+    }
+  }
+}
+```
+
+Approving issues an access token the client stores and refreshes on its own; nothing is pasted by hand. Login is limited to verified `@thefocus.ai` emails, the same rule as `artifacts login`.
+
+**Or paste a token**, for clients that only support a static header:
 
 ```bash
 pnpm artifacts token create --for mcp --label "claude code"
@@ -153,20 +172,6 @@ pnpm artifacts token create --for mcp --label "claude code"
 ```bash
 claude mcp add --transport http artifacts https://artifacts.thefocus.ai/mcp \
   --header "Authorization: Bearer tfai_mcp_..."
-```
-
-Or in `.mcp.json` / any client that accepts a remote MCP server with headers:
-
-```json
-{
-  "mcpServers": {
-    "artifacts": {
-      "type": "http",
-      "url": "https://artifacts.thefocus.ai/mcp",
-      "headers": { "Authorization": "Bearer tfai_mcp_..." }
-    }
-  }
-}
 ```
 
 Tools: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`.
@@ -188,4 +193,13 @@ pnpm artifacts token revoke 3f9a1c2e5b7d --yes
 
 `token list` shows a Token Id — a prefix of the stored hash, safe to paste into an issue — which is what `token revoke` takes. Revoking an `mcp` token does not affect your CLI login, and takes effect on the next request. `/mcp` also accepts an ordinary `tfai_pub_` token, so an existing login keeps working. Requires `migrations/0006_add_publisher_token_kind_and_revocation.sql`.
 
-Authentication is a static bearer token, matching the CLI. That works with any client that lets you set a header; it is not the OAuth 2.1 flow, so a hosted connector UI that only performs OAuth discovery cannot connect. The ADR records what phase 2 would take.
+### OAuth details
+
+`/mcp` is an OAuth 2.1 protected resource and the site is its authorization server. Discovery documents live at `/.well-known/oauth-protected-resource` (and `/.well-known/oauth-protected-resource/mcp`) and `/.well-known/oauth-authorization-server`; the endpoints are `/oauth/authorize`, `/oauth/token`, and `/oauth/register`.
+
+- Public clients with PKCE (`S256` required, `plain` refused). No client secrets.
+- Clients identified by a **Client ID Metadata Document** are preferred, per `STD-009` R2 §3.12 — pass an https `client_id` URL whose document's `client_id` equals that URL. Dynamic Client Registration at `/oauth/register` remains for clients that have not moved.
+- Tokens are audience-bound to `https://artifacts.thefocus.ai/mcp` via the `resource` parameter; a token minted for anything else is refused.
+- Access tokens last an hour, refresh tokens thirty days and rotate on every use.
+
+OAuth requires `migrations/0007_create_oauth_tables.sql` and the Clerk environment variables already used by `artifacts login`.

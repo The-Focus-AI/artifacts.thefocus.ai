@@ -82,7 +82,9 @@ Agent loop: publish, hand the human the Review Link (`/r/...` — a bearer capab
 
 ## MCP endpoint
 
-Agents that speak MCP can connect to `https://artifacts.thefocus.ai/mcp` instead of shelling out to the CLI. It is a remote Streamable HTTP server authenticated by the same Publisher Token, sent as `Authorization: Bearer`. Mint one per client with `npx @the-focus-ai/artifacts token create --for mcp`, and revoke it with `token revoke <Token Id>`.
+Agents that speak MCP can connect to `https://artifacts.thefocus.ai/mcp` instead of shelling out to the CLI. It is a remote Streamable HTTP server.
+
+Point a client at the URL with no credential and it logs in through the browser: `/mcp` is an OAuth 2.1 protected resource, the site is its authorization server, and discovery starts from the `WWW-Authenticate` header on the 401. Sign-in is limited to verified `@thefocus.ai` emails. Clients that only support a static header can instead send a Publisher Token as `Authorization: Bearer`; mint one per client with `npx @the-focus-ai/artifacts token create --for mcp` and revoke it with `token revoke <Token Id>`.
 
 Tools: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`.
 

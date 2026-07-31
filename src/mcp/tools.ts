@@ -224,10 +224,9 @@ export const artifactsMcpTools: McpToolSpec[] = [
     async run(args, context) {
       return removePublication({
         publicationUrl: args.publicationUrl as string,
-        publisherToken: context.publisherToken,
+        publisherEmail: context.publisherEmail,
         metadataStore: context.publicationMetadataStore,
         contentStore: context.artifactContentStore,
-        tokenStore: context.tokenStore,
         stateStore: context.publicationStateStore,
       });
     },

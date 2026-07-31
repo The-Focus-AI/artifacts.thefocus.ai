@@ -14,12 +14,12 @@ import type { PublicationMetadataStore } from "../storage/publication-metadata.j
  * catalog against in-memory ones.
  */
 export interface McpToolContext {
-  publisherEmail: string;
   /**
-   * The raw Publisher Token. Needed because `removePublication` re-checks it
-   * rather than trusting a caller-supplied email.
+   * The authenticated Publisher. The credential itself is not carried past the
+   * route: it may be a Publisher Token or an OAuth access token, and tools
+   * should not care which.
    */
-  publisherToken: string;
+  publisherEmail: string;
   publicBaseUrl: string;
   tokenStore: PublisherTokenStore;
   publicationMetadataStore: PublicationMetadataStore;

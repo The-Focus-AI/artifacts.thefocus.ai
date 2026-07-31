@@ -170,10 +170,16 @@ export interface PublishArtifactResult {
 
 export interface RemovePublicationInput {
   publicationUrl: string;
-  publisherToken: string;
+  /** A Publisher Token to authenticate. Omit when `publisherEmail` is given. */
+  publisherToken?: string;
+  /**
+   * An already-authenticated Publisher, for surfaces that established identity
+   * some other way — an OAuth access token on `/mcp`, for instance.
+   */
+  publisherEmail?: string;
   metadataStore: PublicationMetadataStore;
   contentStore: ArtifactContentStore;
-  tokenStore: PublisherTokenStore;
+  tokenStore?: PublisherTokenStore;
   stateStore: PublicationStateStore;
 }
 
@@ -739,6 +745,15 @@ export function prepareInlineArtifactUpload(
   };
 }
 
+function requireTokenStore(
+  store: PublisherTokenStore | undefined,
+): PublisherTokenStore {
+  if (!store) {
+    throw new Error("A Publisher Token store is required to authenticate.");
+  }
+  return store;
+}
+
 function normalizeInlineArtifactPath(rawPath: string): string {
   if (typeof rawPath !== "string" || rawPath.trim() === "") {
     throw new Error("Each uploaded file requires an artifactPath.");
@@ -828,10 +843,14 @@ export async function publishSingleFileArtifactFromEnvironment(
 export async function removePublication(
   input: RemovePublicationInput,
 ): Promise<RemovePublicationResult> {
-  await authenticatePublisherToken({
-    token: input.publisherToken,
-    store: input.tokenStore,
-  });
+  // Removal is deliberately team-wide: any authenticated Publisher may remove
+  // any Publication. See the Removal tests, which assert exactly that.
+  if (!input.publisherEmail) {
+    await authenticatePublisherToken({
+      token: input.publisherToken,
+      store: requireTokenStore(input.tokenStore),
+    });
+  }
   const opaqueId = opaqueIdFromPublicationUrl(input.publicationUrl);
   if (!opaqueId) throw new Error("remove requires a Publication URL.");
 

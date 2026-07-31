@@ -11,7 +11,7 @@ description: >
 
 # TheFocus.AI Artifacts
 
-Skill version: 1.3.0
+Skill version: 1.4.0
 
 Artifacts turns local agent output into an unlisted Publication URL at
 `https://artifacts.thefocus.ai/a/{id}`, or a Living Doc review loop at
@@ -126,6 +126,8 @@ Rules:
 ## MCP instead of the CLI
 
 If an `artifacts` MCP server is connected, prefer its tools over shelling out — same operations, no subprocess: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`. Otherwise use the CLI as above.
+
+To connect one, add `https://artifacts.thefocus.ai/mcp` as a remote MCP server with no credential — the client runs the OAuth login itself and opens a browser for the human to approve. A pasted Publisher Token still works for clients that only support a static `Authorization: Bearer` header.
 
 Two differences when going through MCP, because that endpoint cannot read the local filesystem:
 

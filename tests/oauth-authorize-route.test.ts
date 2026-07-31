@@ -1,0 +1,176 @@
+import { createHash, randomBytes } from "node:crypto";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import { handleAuthorizeRequest } from "../api/oauth/authorize.js";
+import type { ClerkAuthResult, ClerkVerifier } from "../src/auth-clerk.js";
+import { handleRegister, InMemoryOAuthStore } from "../src/index.js";
+
+const publicBaseUrl = "https://artifacts.thefocus.ai";
+const redirectUri = "http://localhost:47821/callback";
+
+function clerkStub(result: ClerkAuthResult): ClerkVerifier {
+  return { authenticateRequest: async () => result };
+}
+
+const signedIn = clerkStub({
+  kind: "authenticated",
+  verification: { email: "publisher@thefocus.ai", userId: "user_1" },
+});
+
+let server: Server | undefined;
+
+afterEach(async () => {
+  if (!server) return;
+  await new Promise<void>((resolve) => server!.close(() => resolve()));
+  server = undefined;
+});
+
+/**
+ * Run the route on a real HTTP server: the CSRF check reads request headers, so
+ * a hand-built IncomingMessage would not exercise it honestly.
+ */
+async function serve(deps: {
+  clerk: ClerkVerifier;
+  store: InMemoryOAuthStore;
+}): Promise<string> {
+  server = createServer((request, response) => {
+    void handleAuthorizeRequest(request, response, {
+      clerk: deps.clerk,
+      store: deps.store,
+      publicBaseUrl,
+    }).catch(() => {
+      response.writeHead(500);
+      response.end();
+    });
+  });
+  await new Promise<void>((resolve) => server!.listen(0, resolve));
+  return `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
+}
+
+async function registeredClient(store: InMemoryOAuthStore): Promise<string> {
+  const outcome = await handleRegister({
+    metadata: { client_name: "Test", redirect_uris: [redirectUri] },
+    store,
+  });
+  return (outcome.body as { client_id: string }).client_id;
+}
+
+function authorizeQuery(clientId: string): URLSearchParams {
+  const verifier = randomBytes(32).toString("base64url");
+  return new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    code_challenge_method: "S256",
+    state: "state-1",
+    resource: `${publicBaseUrl}/mcp`,
+  });
+}
+
+describe("authorize route", () => {
+  it("renders the consent page to a signed-in Publisher", async () => {
+    const store = new InMemoryOAuthStore();
+    const base = await serve({ clerk: signedIn, store });
+    const clientId = await registeredClient(store);
+
+    const response = await fetch(
+      `${base}/oauth/authorize?${authorizeQuery(clientId)}`,
+    );
+
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("Authorize this client");
+    expect(html).toContain("publisher@thefocus.ai");
+    expect(html).toContain('name="approve" value="yes"');
+  });
+
+  it("sends an unauthenticated visitor to Clerk sign-in", async () => {
+    const store = new InMemoryOAuthStore();
+    const base = await serve({
+      clerk: clerkStub({ kind: "unauthenticated", message: "no session" }),
+      store,
+    });
+    const clientId = await registeredClient(store);
+
+    const response = await fetch(
+      `${base}/oauth/authorize?${authorizeQuery(clientId)}`,
+      { redirect: "manual" },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toContain("/sign-in");
+  });
+
+  it("issues a code on a same-origin approval", async () => {
+    const store = new InMemoryOAuthStore();
+    const base = await serve({ clerk: signedIn, store });
+    const clientId = await registeredClient(store);
+
+    const response = await fetch(`${base}/oauth/authorize`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        origin: base,
+      },
+      body: new URLSearchParams([
+        ...authorizeQuery(clientId).entries(),
+        ["approve", "yes"],
+      ]),
+      redirect: "manual",
+    });
+
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get("location")!);
+    expect(location.origin + location.pathname).toBe(redirectUri);
+    expect(location.searchParams.get("code")).toBeTruthy();
+    expect(location.searchParams.get("state")).toBe("state-1");
+  });
+
+  it("refuses an approval posted from another origin", async () => {
+    const store = new InMemoryOAuthStore();
+    const base = await serve({ clerk: signedIn, store });
+    const clientId = await registeredClient(store);
+
+    const response = await fetch(`${base}/oauth/authorize`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        origin: "https://evil.example",
+      },
+      body: new URLSearchParams([
+        ...authorizeQuery(clientId).entries(),
+        ["approve", "yes"],
+      ]),
+      redirect: "manual",
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.text()).toContain("did not come from");
+  });
+
+  it("treats Cancel as a refusal without issuing a code", async () => {
+    const store = new InMemoryOAuthStore();
+    const base = await serve({ clerk: signedIn, store });
+    const clientId = await registeredClient(store);
+
+    const response = await fetch(`${base}/oauth/authorize`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        origin: base,
+      },
+      body: new URLSearchParams([
+        ...authorizeQuery(clientId).entries(),
+        ["approve", "no"],
+      ]),
+      redirect: "manual",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("cancelled");
+  });
+});

@@ -7,6 +7,7 @@ import {
 } from "../src/http.js";
 import { InMemoryPublicationStateStore } from "../src/local-config.js";
 import { handleArtifactsMcpRequest } from "../src/mcp/server.js";
+import { createNeonOAuthStore } from "../src/oauth/store.js";
 import { defaultPublicBaseUrl } from "../src/publication.js";
 import { VercelBlobArtifactContentStore } from "../src/storage/artifact-content.js";
 import { createVercelBlobDocAssetContentStore } from "../src/storage/doc-asset-content.js";
@@ -28,6 +29,7 @@ export default async function handler(
     publicationStateStore: new InMemoryPublicationStateStore(),
     livingDocStore: createNeonLivingDocMetadataStore(),
     docAssetContentStore: createVercelBlobDocAssetContentStore(),
+    oauthStore: createNeonOAuthStore(),
     publicBaseUrl:
       process.env.ARTIFACTS_PUBLIC_BASE_URL ?? defaultPublicBaseUrl,
   });
