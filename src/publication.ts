@@ -624,6 +624,139 @@ export async function prepareArtifactUpload(
   };
 }
 
+/** A file supplied as content rather than read from the local filesystem. */
+export interface InlineArtifactFile {
+  artifactPath: string;
+  /** Base64 for binary files. Exactly one of `contentBase64` or `text`. */
+  contentBase64?: string;
+  text?: string;
+  contentType?: string;
+}
+
+export interface PrepareInlineArtifactUploadInput {
+  /** Shorthand for a one-page Artifact: the HTML becomes `index.html`. */
+  html?: string;
+  files?: InlineArtifactFile[];
+  entryPage?: string;
+  /**
+   * Recorded as the Publication's Local Source. Inline uploads have no local
+   * path, so callers pass a marker naming the surface they came from.
+   */
+  sourceLabel?: string;
+}
+
+/**
+ * Build an upload from content held in memory, for surfaces that cannot read
+ * the Publisher's filesystem. The same preflight limits as
+ * `prepareArtifactUpload` apply — they are the service's limits, not the
+ * CLI's.
+ */
+export function prepareInlineArtifactUpload(
+  input: PrepareInlineArtifactUploadInput,
+): PreparedArtifactUpload {
+  const localSourcePath = input.sourceLabel ?? "inline:artifact";
+  const hasFiles = (input.files?.length ?? 0) > 0;
+  if (input.html === undefined && !hasFiles) {
+    throw new Error("Publishing requires either html or at least one file.");
+  }
+  if (input.html !== undefined && hasFiles) {
+    throw new Error(
+      "Pass either html (a single page) or files (a directory Artifact), not both.",
+    );
+  }
+
+  if (input.html !== undefined) {
+    const body = Buffer.from(input.html, "utf-8");
+    assertFileWithinSingleFileLimit(
+      body.byteLength,
+      singleFileEntryArtifactPath,
+    );
+    return {
+      kind: "single-file",
+      localSourcePath,
+      entryArtifactPath: singleFileEntryArtifactPath,
+      files: [
+        {
+          artifactPath: singleFileEntryArtifactPath,
+          body,
+          contentType: "text/html; charset=utf-8",
+        },
+      ],
+      excludedArtifactPaths: [],
+    };
+  }
+
+  const seen = new Set<string>();
+  const files = (input.files ?? []).map((file) => {
+    const artifactPath = normalizeInlineArtifactPath(file.artifactPath);
+    if (seen.has(artifactPath)) {
+      throw new Error(`Duplicate Artifact Path in upload: ${artifactPath}`);
+    }
+    seen.add(artifactPath);
+    if (file.contentBase64 !== undefined && file.text !== undefined) {
+      throw new Error(
+        `Artifact file ${artifactPath} must set either contentBase64 or text, not both.`,
+      );
+    }
+    const body =
+      file.text !== undefined
+        ? Buffer.from(file.text, "utf-8")
+        : Buffer.from(file.contentBase64 ?? "", "base64");
+    assertFileWithinSingleFileLimit(body.byteLength, artifactPath);
+    return {
+      artifactPath,
+      body,
+      contentType: file.contentType ?? contentTypeForArtifactPath(artifactPath),
+    };
+  });
+
+  assertDirectoryArtifactWithinPreflightLimits(
+    files.map((file) => ({
+      absolutePath: file.artifactPath,
+      artifactPath: file.artifactPath,
+      size: file.body.byteLength,
+    })),
+  );
+
+  const entryArtifactPath = normalizeEntryPage(input.entryPage ?? "index.html");
+  if (!entryArtifactPath.endsWith(".html")) {
+    throw new Error("Directory Artifact Entry Page must be an HTML file.");
+  }
+  if (!files.some((file) => file.artifactPath === entryArtifactPath)) {
+    throw new Error(
+      input.entryPage
+        ? `Entry Page not found in the uploaded files: ${entryArtifactPath}`
+        : "Directory Artifacts require a root index.html by default. Pass entryPage to choose a different HTML Entry Page.",
+    );
+  }
+
+  return {
+    kind: "directory",
+    localSourcePath,
+    entryArtifactPath,
+    files,
+    excludedArtifactPaths: [],
+  };
+}
+
+function normalizeInlineArtifactPath(rawPath: string): string {
+  if (typeof rawPath !== "string" || rawPath.trim() === "") {
+    throw new Error("Each uploaded file requires an artifactPath.");
+  }
+  if (isAbsolute(rawPath) || rawPath.startsWith("/")) {
+    throw new Error(`Artifact Path must be relative: ${rawPath}`);
+  }
+  const artifactPath = toArtifactPath(rawPath.replace(/\\/g, "/"));
+  const segments = artifactPath.split("/");
+  if (segments.some((segment) => segment === "..")) {
+    throw new Error(`Artifact Path must not escape the Artifact: ${rawPath}`);
+  }
+  if (segments.some((segment) => segment === "")) {
+    throw new Error(`Artifact Path has an empty segment: ${rawPath}`);
+  }
+  return artifactPath;
+}
+
 export async function publishUploadedArtifact(
   input: PublishUploadedArtifactInput,
 ): Promise<PublishArtifactResult & { excludedArtifactPaths: string[] }> {

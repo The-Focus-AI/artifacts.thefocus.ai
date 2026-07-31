@@ -11,7 +11,7 @@ description: >
 
 # TheFocus.AI Artifacts
 
-Skill version: 1.2.1
+Skill version: 1.3.0
 
 Artifacts turns local agent output into an unlisted Publication URL at
 `https://artifacts.thefocus.ai/a/{id}`, or a Living Doc review loop at
@@ -122,6 +122,15 @@ Rules:
 - Keep `anchorQuote` an exact substring of the pulled Markdown.
 - Include `anchorStart` when the quote appears more than once.
 - Do not crawl, guess, or enumerate `/d/` or `/r/` URLs.
+
+## MCP instead of the CLI
+
+If an `artifacts` MCP server is connected, prefer its tools over shelling out — same operations, no subprocess: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`. Otherwise use the CLI as above.
+
+Two differences when going through MCP, because that endpoint cannot read the local filesystem:
+
+- Send content inline: `html` for a single page, or `files` (each with `text` or `contentBase64`) for a bundle with a root `index.html`. Large directories still need the CLI. Living Doc images must be supplied as `assets`.
+- There is no Revision Window: `publish_artifact` always creates a new Publication. Keep the returned Publication URL and pass it to `update_artifact` to change it in place.
 
 ## Constraints
 

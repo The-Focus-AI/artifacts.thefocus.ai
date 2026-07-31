@@ -119,6 +119,99 @@ export class HttpArtifactApiClient implements ArtifactApiClient {
   }
 }
 
+export interface PublisherTokenSummary {
+  tokenId: string;
+  kind: "cli" | "mcp";
+  label: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+}
+
+/**
+ * Token administration, kept separate from `ArtifactApiClient` because it is
+ * about the credential rather than about Publications.
+ */
+export interface PublisherTokenApiClient {
+  listTokens(token: string): Promise<PublisherTokenSummary[]>;
+  createToken(
+    token: string,
+    options: { kind: "cli" | "mcp"; label?: string },
+  ): Promise<{
+    token: string;
+    tokenId: string;
+    kind: "cli" | "mcp";
+    label: string | null;
+  }>;
+  revokeToken(
+    token: string,
+    tokenId: string,
+  ): Promise<{ tokenId: string; status: string }>;
+}
+
+export class HttpPublisherTokenApiClient implements PublisherTokenApiClient {
+  constructor(
+    private readonly publicBaseUrl: string = defaultPublicBaseUrl,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {}
+
+  async listTokens(token: string): Promise<PublisherTokenSummary[]> {
+    const response = await this.request("/api/artifacts?action=tokens", token);
+    const body = (await response.json()) as { tokens: PublisherTokenSummary[] };
+    return body.tokens;
+  }
+
+  async createToken(
+    token: string,
+    options: { kind: "cli" | "mcp"; label?: string },
+  ) {
+    const response = await this.request(
+      "/api/artifacts?action=token-create",
+      token,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(options),
+      },
+    );
+    return (await response.json()) as {
+      token: string;
+      tokenId: string;
+      kind: "cli" | "mcp";
+      label: string | null;
+    };
+  }
+
+  async revokeToken(token: string, tokenId: string) {
+    const response = await this.request(
+      "/api/artifacts?action=token-revoke",
+      token,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tokenId }),
+      },
+    );
+    return (await response.json()) as { tokenId: string; status: string };
+  }
+
+  private async request(
+    path: string,
+    token: string,
+    init: RequestInit = {},
+  ): Promise<Response> {
+    const response = await this.fetchImpl(new URL(path, this.publicBaseUrl), {
+      ...init,
+      headers: { ...(init.headers ?? {}), authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `Token API request failed: ${response.status}`);
+    }
+    return response;
+  }
+}
+
 export interface PublishDocAssetWire {
   relativeRef: string;
   assetPath: string;

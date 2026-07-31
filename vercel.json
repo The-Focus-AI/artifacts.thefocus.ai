@@ -108,6 +108,10 @@
       "destination": "/api/login"
     },
     {
+      "source": "/mcp",
+      "destination": "/api/mcp"
+    },
+    {
       "source": "/a/:opaque",
       "destination": "/api/a/:opaque"
     },

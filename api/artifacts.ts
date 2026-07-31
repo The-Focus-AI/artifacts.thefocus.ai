@@ -3,6 +3,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   authenticatePublisherToken,
   createNeonPublisherTokenStore,
+  issuePublisherToken,
+  listPublisherTokens,
+  revokePublisherToken,
+  type PublisherTokenKind,
 } from "../src/auth.js";
 import { writeWebResponseToNodeResponse } from "../src/http.js";
 import {
@@ -53,6 +57,55 @@ export async function handleArtifactsApiRequest(
       return json({
         publications: await metadataStore.listByPublisherEmail(publisherEmail),
       });
+    }
+
+    if (request.method === "GET" && action === "tokens") {
+      const tokens = await listPublisherTokens({
+        publisherEmail,
+        store: tokenStore,
+      });
+      return json({
+        tokens: tokens.map((record) => ({
+          tokenId: record.tokenId,
+          kind: record.kind,
+          label: record.label,
+          createdAt: record.createdAt,
+          lastUsedAt: record.lastUsedAt,
+          revokedAt: record.revokedAt,
+        })),
+      });
+    }
+
+    if (request.method === "POST" && action === "token-create") {
+      const body = (await request.json()) as {
+        kind?: PublisherTokenKind;
+        label?: string;
+      };
+      const kind = body.kind === "mcp" ? "mcp" : "cli";
+      const issued = await issuePublisherToken({
+        email: publisherEmail,
+        store: tokenStore,
+        kind,
+        label: body.label ?? null,
+      });
+      return json({
+        token: issued.token,
+        tokenId: issued.tokenId,
+        kind: issued.kind,
+        label: issued.label,
+      });
+    }
+
+    if (request.method === "POST" && action === "token-revoke") {
+      const body = (await request.json()) as { tokenId?: string };
+      if (!body.tokenId) return json({ error: "tokenId is required" }, 400);
+      return json(
+        await revokePublisherToken({
+          tokenId: body.tokenId,
+          publisherEmail,
+          store: tokenStore,
+        }),
+      );
     }
 
     if (request.method === "POST" && action === "remove") {
