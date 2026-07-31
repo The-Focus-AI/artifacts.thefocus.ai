@@ -80,6 +80,16 @@ Agent loop: publish, hand the human the Review Link (`/r/...` — a bearer capab
 - Giving clients and collaborators a stable unlisted URL for review.
 - Letting agents hotfix a recently shared Artifact without sending a new URL.
 
+## MCP endpoint
+
+Agents that speak MCP can connect to `https://artifacts.thefocus.ai/mcp` instead of shelling out to the CLI. It is a remote Streamable HTTP server.
+
+Point a client at the URL with no credential and it logs in through the browser: `/mcp` is an OAuth 2.1 protected resource, the site is its authorization server, and discovery starts from the `WWW-Authenticate` header on the 401. Sign-in is limited to verified `@thefocus.ai` emails. Clients that only support a static header can instead send a Publisher Token as `Authorization: Bearer`; mint one per client with `npx @the-focus-ai/artifacts token create --for mcp` and revoke it with `token revoke <Token Id>`.
+
+Tools: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`.
+
+The endpoint cannot read your filesystem, so Artifact content and Doc Assets travel inline and there is no Revision Window — `publish_artifact` always creates a new Publication, and `update_artifact` changes one in place by its Publication URL. Publish large directories with the CLI.
+
 ## Important constraints
 
 - Publication URLs are unlisted, not private. Anyone with the exact URL can view them.

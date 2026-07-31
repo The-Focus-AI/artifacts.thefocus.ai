@@ -9,6 +9,10 @@ import { fileURLToPath } from "node:url";
 import {
   authenticatePublisherToken,
   createNeonPublisherTokenStore,
+  issuePublisherToken,
+  listPublisherTokens,
+  revokePublisherToken,
+  type PublisherTokenKind,
   type PublisherTokenStore,
 } from "./auth.js";
 import {
@@ -40,8 +44,10 @@ import {
 import {
   HttpArtifactApiClient,
   HttpLivingDocApiClient,
+  HttpPublisherTokenApiClient,
   type ArtifactApiClient,
   type LivingDocApiClient,
+  type PublisherTokenApiClient,
 } from "./remote-api.js";
 import {
   createNeonPublicationMetadataStore,
@@ -56,6 +62,7 @@ export interface CliDependencies {
   metadataStore?: PublicationMetadataStore;
   apiClient?: ArtifactApiClient;
   docApiClient?: LivingDocApiClient;
+  tokenApiClient?: PublisherTokenApiClient;
   configDir?: string;
   openBrowser?: (url: string) => Promise<void>;
   stdin?: NodeJS.ReadStream;
@@ -272,6 +279,18 @@ export async function runCli(
       return 0;
     }
 
+    if (command === "token") {
+      return await runTokenCommand(firstArg, flags[0], {
+        env,
+        configDir,
+        options,
+        stdout,
+        stdin: dependencies.stdin ?? process.stdin,
+        tokenStore: dependencies.tokenStore,
+        tokenApiClient: dependencies.tokenApiClient,
+      });
+    }
+
     if (command === "doc") {
       return await runDocCommand(firstArg, flags[0], {
         env,
@@ -420,6 +439,165 @@ async function runDocCommand(
   );
 }
 
+async function runTokenCommand(
+  subcommand: string | undefined,
+  target: string | undefined,
+  context: {
+    env: NodeJS.ProcessEnv;
+    configDir: string;
+    options: Record<string, string | undefined>;
+    stdout: Pick<NodeJS.WriteStream, "write">;
+    stdin: NodeJS.ReadStream;
+    tokenStore?: PublisherTokenStore;
+    tokenApiClient?: PublisherTokenApiClient;
+  },
+): Promise<number> {
+  const { env, configDir, options, stdout } = context;
+  const active = await resolvePublisherToken({ env, configDir });
+  if (!active.token) throw new Error("A valid Publisher Token is required");
+
+  // A local store means tests or a server-side caller; otherwise go through the
+  // hosted API so the CLI never needs DATABASE_URL.
+  const store = context.tokenStore;
+  const client =
+    context.tokenApiClient ??
+    new HttpPublisherTokenApiClient(
+      options["base-url"] ??
+        env.ARTIFACTS_PUBLIC_BASE_URL ??
+        defaultPublicBaseUrl,
+    );
+
+  if (subcommand === "create") {
+    const kind: PublisherTokenKind = options.for === "mcp" ? "mcp" : "cli";
+    const label = options.label;
+    const issued = store
+      ? await issuePublisherToken({
+          email: await authenticatePublisherToken({
+            token: active.token,
+            store,
+          }),
+          store,
+          kind,
+          label: label ?? null,
+        })
+      : await client.createToken(active.token, { kind, label });
+    stdout.write(
+      `${issued.token}\n\n` +
+        `Token Id: ${issued.tokenId}  (kind: ${issued.kind}${
+          issued.label ? `, label: ${issued.label}` : ""
+        })\n` +
+        "This is the only time the token is shown. Store it now.\n" +
+        (kind === "mcp"
+          ? "Use it as the Authorization: Bearer credential for the /mcp endpoint.\n"
+          : ""),
+    );
+    return 0;
+  }
+
+  if (subcommand === "list") {
+    const records: Array<{
+      tokenId: string;
+      kind: string;
+      label: string | null;
+      createdAt: Date | string;
+      lastUsedAt: Date | string | null;
+      revokedAt: Date | string | null;
+    }> = store
+      ? await listPublisherTokens({
+          publisherEmail: await authenticatePublisherToken({
+            token: active.token,
+            store,
+          }),
+          store,
+        })
+      : await client.listTokens(active.token);
+    stdout.write(`${formatTokenList(records)}\n`);
+    return 0;
+  }
+
+  if (subcommand === "revoke") {
+    if (!target) throw new Error("token revoke requires a Token Id.");
+    if (!Object.hasOwn(options, "yes")) {
+      const confirmed = await confirmRevocation(target, context.stdin, stdout);
+      if (!confirmed) {
+        stdout.write("Revocation cancelled.\n");
+        return 1;
+      }
+    }
+    const result = store
+      ? await revokePublisherToken({
+          tokenId: target,
+          publisherEmail: await authenticatePublisherToken({
+            token: active.token,
+            store,
+          }),
+          store,
+        })
+      : await client.revokeToken(active.token, target);
+    stdout.write(`${result.tokenId}: ${result.status}\n`);
+    return result.status === "not-found" ? 1 : 0;
+  }
+
+  throw new Error(
+    "Usage: artifacts token <create [--for mcp] [--label name]|list|revoke <Token Id> [--yes]>",
+  );
+}
+
+function formatTokenList(
+  records: Array<{
+    tokenId: string;
+    kind: string;
+    label: string | null;
+    createdAt: Date | string;
+    lastUsedAt: Date | string | null;
+    revokedAt: Date | string | null;
+  }>,
+): string {
+  const lines = [
+    "TOKEN ID      KIND  STATUS    CREATED                   LAST USED                 LABEL",
+  ];
+  if (records.length === 0) {
+    lines.push("No Publisher Tokens found.");
+    return lines.join("\n");
+  }
+  for (const record of records) {
+    const status = record.revokedAt ? "revoked" : "active";
+    const lastUsed = record.lastUsedAt
+      ? new Date(record.lastUsedAt).toISOString()
+      : "never";
+    lines.push(
+      `${record.tokenId.padEnd(13)} ${record.kind.padEnd(5)} ${status.padEnd(
+        9,
+      )} ${new Date(record.createdAt).toISOString()}  ${lastUsed.padEnd(25)} ${
+        record.label ?? ""
+      }`.trimEnd(),
+    );
+  }
+  return lines.join("\n");
+}
+
+async function confirmRevocation(
+  tokenId: string,
+  stdin: NodeJS.ReadStream,
+  stdout: Pick<NodeJS.WriteStream, "write">,
+): Promise<boolean> {
+  if (!stdin.isTTY) {
+    throw new Error("Revocation requires --yes in non-interactive terminals.");
+  }
+  const readline = createInterface({
+    input: stdin,
+    output: stdout as NodeJS.WriteStream,
+  });
+  try {
+    const answer = await readline.question(
+      `Revoke Publisher Token ${tokenId}? Anything using it stops working. Type yes to continue: `,
+    );
+    return answer.trim().toLowerCase() === "yes";
+  } finally {
+    readline.close();
+  }
+}
+
 async function publishWithDefaultApiClient(
   sourcePath: string,
   token: string,
@@ -558,7 +736,7 @@ function readStdin(stream: NodeJS.ReadableStream): Promise<string> {
 
 function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
   output.write(
-    "Usage: npx @the-focus-ai/artifacts <login|logout|whoami|publish|remove|list|doc>\n" +
+    "Usage: npx @the-focus-ai/artifacts <login|logout|whoami|publish|remove|list|doc|token>\n" +
       "  npx @the-focus-ai/artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
       '  npx @the-focus-ai/artifacts publish <file.html|directory> [--entry-page index.html] [--title "My Report"] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose] [--open]\n' +
       "  npx @the-focus-ai/artifacts remove <Publication URL> [--yes] [--base-url https://artifacts.thefocus.ai]\n" +
@@ -569,7 +747,10 @@ function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
       "  npx @the-focus-ai/artifacts doc pull <Living Doc View URL or id> [--base-url ...]\n" +
       "  npx @the-focus-ai/artifacts doc respond <Living Doc View URL or id> [--body feedback.json] [--base-url ...]\n" +
       "  npx @the-focus-ai/artifacts doc list [--base-url ...]\n" +
-      "  npx @the-focus-ai/artifacts doc remove <Living Doc View URL or id> [--yes] [--base-url ...]\n",
+      "  npx @the-focus-ai/artifacts doc remove <Living Doc View URL or id> [--yes] [--base-url ...]\n" +
+      '  npx @the-focus-ai/artifacts token create [--for mcp] [--label "claude desktop"] [--base-url ...]\n' +
+      "  npx @the-focus-ai/artifacts token list [--base-url ...]\n" +
+      "  npx @the-focus-ai/artifacts token revoke <Token Id> [--yes] [--base-url ...]\n",
   );
 }
 

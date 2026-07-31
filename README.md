@@ -139,3 +139,67 @@ pnpm artifacts doc remove https://artifacts.thefocus.ai/d/Ab3xY9kQ --yes
 ```
 
 Suggestions are never applied automatically — the Reviewer accepts or rejects each one in the editor, and accepting applies the change to the live Markdown at the anchored quote (nearest `anchorStart` when it matches more than once). If the Reviewer has edited the quoted text away, the Suggestion stays pending so its replacement remains visible rather than being marked accepted without applying. Each `doc pull` advances the Version number so both sides can refer back to "as of Version 3." Because the review surface is reachable by anyone holding the Review Link, all inputs are size-capped server-side (2 MB for the Markdown, 64 KB for comments, suggestion text, and replies). Living Docs require `migrations/0005_create_living_docs.sql`.
+
+## MCP endpoint
+
+`https://artifacts.thefocus.ai/mcp` exposes the same publishing and Living Doc operations as MCP tools, for agents that speak MCP instead of shelling out to the CLI. It is an addition to the CLI, not a replacement — see [docs/adr/0007-remote-mcp-endpoint-over-publisher-tokens.md](docs/adr/0007-remote-mcp-endpoint-over-publisher-tokens.md) and [docs/adr/0008-mcp-clients-log-in-with-oauth.md](docs/adr/0008-mcp-clients-log-in-with-oauth.md).
+
+**Log in through the browser.** Point any MCP client at the URL with no credential and it runs the OAuth flow itself — discovers the authorization server, registers, opens your browser to sign in with Clerk, and shows a consent page naming the client:
+
+```bash
+claude mcp add --transport http artifacts https://artifacts.thefocus.ai/mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "artifacts": {
+      "type": "http",
+      "url": "https://artifacts.thefocus.ai/mcp"
+    }
+  }
+}
+```
+
+Approving issues an access token the client stores and refreshes on its own; nothing is pasted by hand. Login is limited to verified `@thefocus.ai` emails, the same rule as `artifacts login`.
+
+**Or paste a token**, for clients that only support a static header:
+
+```bash
+pnpm artifacts token create --for mcp --label "claude code"
+```
+
+```bash
+claude mcp add --transport http artifacts https://artifacts.thefocus.ai/mcp \
+  --header "Authorization: Bearer tfai_mcp_..."
+```
+
+Tools: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`.
+
+Two differences from the CLI, both because the endpoint cannot read your filesystem:
+
+- **Artifact content travels inline.** `publish_artifact` takes `html` for a single page, or `files` (each with `text` or `contentBase64`) for a bundle with a root `index.html`. This suits pages and small bundles; publish large directories with the CLI. Living Doc images must likewise be supplied as `assets` — `publish_doc` reports any Markdown image reference with no matching asset.
+- **The Revision Window does not apply.** There is no Local Source to match, so `publish_artifact` always creates a new Publication. To change one in place, call `update_artifact` with its Publication URL.
+
+### Publisher Tokens for MCP clients
+
+MCP clients store credentials in configuration files that are often committed or synced, so mint a separate token per client rather than reusing your CLI login:
+
+```bash
+pnpm artifacts token create --for mcp --label "cursor"   # shown once
+pnpm artifacts token list
+pnpm artifacts token revoke 3f9a1c2e5b7d --yes
+```
+
+`token list` shows a Token Id — a prefix of the stored hash, safe to paste into an issue — which is what `token revoke` takes. Revoking an `mcp` token does not affect your CLI login, and takes effect on the next request. `/mcp` also accepts an ordinary `tfai_pub_` token, so an existing login keeps working. Requires `migrations/0006_add_publisher_token_kind_and_revocation.sql`.
+
+### OAuth details
+
+`/mcp` is an OAuth 2.1 protected resource and the site is its authorization server. Discovery documents live at `/.well-known/oauth-protected-resource` (and `/.well-known/oauth-protected-resource/mcp`) and `/.well-known/oauth-authorization-server`; the endpoints are `/oauth/authorize`, `/oauth/token`, and `/oauth/register`.
+
+- Public clients with PKCE (`S256` required, `plain` refused). No client secrets.
+- Clients identified by a **Client ID Metadata Document** are preferred, per `STD-009` R2 §3.12 — pass an https `client_id` URL whose document's `client_id` equals that URL. Dynamic Client Registration at `/oauth/register` remains for clients that have not moved.
+- Tokens are audience-bound to `https://artifacts.thefocus.ai/mcp` via the `resource` parameter; a token minted for anything else is refused.
+- Access tokens last an hour, refresh tokens thirty days and rotate on every use.
+
+OAuth requires `migrations/0007_create_oauth_tables.sql` and the Clerk environment variables already used by `artifacts login`.
