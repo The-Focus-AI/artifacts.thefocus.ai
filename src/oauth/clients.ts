@@ -194,10 +194,44 @@ export function assertUsableRedirectUri(redirectUri: string): void {
   );
 }
 
-/** Exact string match, as OAuth 2.1 requires — no prefix or wildcard matching. */
+/**
+ * Exact string match, as OAuth 2.1 requires — no prefix or wildcard matching.
+ * The one carve-out, also from OAuth 2.1 (and RFC 8252 §7.3): a loopback
+ * redirect URI matches on any port, because native clients bind an ephemeral
+ * port at request time. Claude Code, for example, registers
+ * http://localhost/callback and requests http://localhost:53682/callback.
+ */
 export function redirectUriIsRegistered(
   client: OAuthClientRecord,
   redirectUri: string,
 ): boolean {
-  return client.redirectUris.includes(redirectUri);
+  if (client.redirectUris.includes(redirectUri)) return true;
+
+  const requested = parseLoopbackHttpUri(redirectUri);
+  if (!requested) return false;
+  return client.redirectUris.some((registered) => {
+    const candidate = parseLoopbackHttpUri(registered);
+    return (
+      candidate !== null &&
+      candidate.hostname === requested.hostname &&
+      candidate.pathname === requested.pathname &&
+      candidate.search === requested.search
+    );
+  });
+}
+
+function parseLoopbackHttpUri(uri: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(uri);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:") return null;
+  const loopback =
+    url.hostname === "localhost" ||
+    url.hostname === "127.0.0.1" ||
+    url.hostname === "[::1]" ||
+    url.hostname === "::1";
+  return loopback ? url : null;
 }

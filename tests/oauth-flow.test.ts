@@ -186,6 +186,47 @@ describe("authorization endpoint", () => {
     expect(outcome).toMatchObject({ kind: "error-page" });
   });
 
+  it("matches a loopback redirect_uri on any port, as OAuth 2.1 requires", async () => {
+    const store = new InMemoryOAuthStore();
+    const clientId = await registeredClient(store);
+    const outcome = await handleAuthorize({
+      params: authorizeParams(clientId, pkce().challenge, {
+        redirect_uri: "http://localhost:3118/callback",
+      }),
+      store,
+      publicBaseUrl,
+      publisherEmail: "publisher@thefocus.ai",
+      requestUrl: `${publicBaseUrl}/oauth/authorize`,
+      approved: true,
+    });
+
+    expect(outcome.kind).toBe("code-issued");
+    const location = new URL((outcome as { location: string }).location);
+    expect(location.origin).toBe("http://localhost:3118");
+    expect(location.searchParams.get("code")).toBeTruthy();
+  });
+
+  it("does not extend port-flexible matching to non-loopback redirect_uris", async () => {
+    const store = new InMemoryOAuthStore();
+    const registration = await handleRegister({
+      metadata: { redirect_uris: ["https://example.com/callback"] },
+      store,
+    });
+    const clientId = (registration.body as { client_id: string }).client_id;
+    const outcome = await handleAuthorize({
+      params: authorizeParams(clientId, pkce().challenge, {
+        redirect_uri: "https://example.com:8443/callback",
+      }),
+      store,
+      publicBaseUrl,
+      publisherEmail: "publisher@thefocus.ai",
+      requestUrl: `${publicBaseUrl}/oauth/authorize`,
+      approved: true,
+    });
+
+    expect(outcome).toMatchObject({ kind: "error-page" });
+  });
+
   it("redirects protocol errors back to a validated redirect_uri", async () => {
     const store = new InMemoryOAuthStore();
     const clientId = await registeredClient(store);
