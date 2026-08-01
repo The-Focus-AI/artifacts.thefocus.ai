@@ -73,15 +73,27 @@ export async function handleAuthorizeRequest(
     approved = true;
   }
 
-  const publisherEmail = await signedInPublisher(request, response, deps.clerk);
-  if (publisherEmail === "response-sent") return;
+  const session = await signedInPublisher(request, response, deps.clerk);
+  if (session.kind === "response-sent") return;
+  // Clerk may hand back a Set-Cookie that persists the session on this domain
+  // after a handshake. Without it the consent POST looks signed out.
+  applyClerkHeaders(response, session.headers);
+
+  // Where to resume after sign-in. Rebuilt from the parameters rather than
+  // reusing the request URL, so an unauthenticated consent POST still comes
+  // back with its OAuth parameters intact.
+  const resumeUrl = new URL(`${url.origin}${url.pathname}`);
+  for (const [key, value] of params.entries()) {
+    if (key === "approve" || key === signInAttemptedParam) continue;
+    resumeUrl.searchParams.set(key, value);
+  }
 
   const outcome = await handleAuthorize({
     params: readAuthorizeParams(params),
     store: deps.store,
     publicBaseUrl: deps.publicBaseUrl,
-    publisherEmail,
-    requestUrl,
+    publisherEmail: session.email,
+    requestUrl: resumeUrl.toString(),
     approved,
     fetchImpl: deps.fetchImpl,
   });
@@ -95,12 +107,30 @@ export async function handleAuthorizeRequest(
       response.writeHead(302, { Location: outcome.location });
       response.end();
       return;
-    case "sign-in-required":
+    case "sign-in-required": {
+      // Loop breaker. Sign-in bounces the browser back here; if it returns
+      // still unauthenticated we must not send it round again, or the two
+      // sides ping-pong forever. Once is a redirect, twice is an explanation.
+      if (url.searchParams.has(signInAttemptedParam)) {
+        sendHtml(
+          response,
+          401,
+          oauthErrorPageHtml(
+            `Signed in with Clerk, but this site did not receive a session${
+              session.message ? ` (${session.message})` : ""
+            }. Check that third-party cookies are allowed for artifacts.thefocus.ai, then start the login again from your client.`,
+          ),
+        );
+        return;
+      }
+      const returnUrl = new URL(outcome.returnUrl);
+      returnUrl.searchParams.set(signInAttemptedParam, "1");
       response.writeHead(302, {
-        Location: buildClerkSignInUrl(outcome.returnUrl),
+        Location: buildClerkSignInUrl(returnUrl.toString()),
       });
       response.end();
       return;
+    }
     case "consent":
       sendHtml(
         response,
@@ -108,9 +138,9 @@ export async function handleAuthorizeRequest(
         consentPageHtml({
           clientId: outcome.client.clientId,
           clientName: outcome.client.clientName,
-          publisherEmail: publisherEmail ?? "",
+          publisherEmail: session.email ?? "",
           hiddenFields: [...params.entries()].filter(
-            ([key]) => key !== "approve",
+            ([key]) => key !== "approve" && key !== signInAttemptedParam,
           ),
         }),
       );
@@ -118,29 +148,82 @@ export async function handleAuthorizeRequest(
   }
 }
 
+/** Marks that we already sent this browser through Clerk sign-in once. */
+const signInAttemptedParam = "__artifacts_signin";
+
+type ClerkSession =
+  | {
+      kind: "resolved";
+      email: string | null;
+      message?: string;
+      headers?: Headers;
+    }
+  | { kind: "response-sent" };
+
 /**
- * Resolve the browser's Clerk session. Returns null when nobody is signed in,
- * so the caller can send them through sign-in and come back.
+ * Resolve the browser's Clerk session. `email: null` means nobody is signed in
+ * yet, so the caller can send them through sign-in — once.
  */
 async function signedInPublisher(
   request: IncomingMessage,
   response: ServerResponse,
   clerk: ClerkVerifier,
-): Promise<string | null | "response-sent"> {
+): Promise<ClerkSession> {
   const result = await clerk.authenticateRequest(request);
+
   if (result.kind === "redirect") {
     const location = result.headers.get("location");
-    if (!location) return null;
-    for (const [name, value] of result.headers.entries()) {
-      if (name.toLowerCase() === "location") continue;
-      response.setHeader(name, value);
+    if (!location) {
+      // A handshake with nowhere to go cannot be completed by redirecting;
+      // treat it as "not signed in" and let the loop breaker handle it.
+      return {
+        kind: "resolved",
+        email: null,
+        message: "Clerk requested a handshake without a redirect location",
+        headers: result.headers,
+      };
     }
+    applyClerkHeaders(response, result.headers, { skipLocation: true });
     response.writeHead(307, { Location: location });
     response.end();
-    return "response-sent";
+    return { kind: "response-sent" };
   }
-  if (result.kind === "unauthenticated") return null;
-  return result.verification.email;
+
+  if (result.kind === "unauthenticated") {
+    return {
+      kind: "resolved",
+      email: null,
+      message: result.message,
+      headers: result.headers,
+    };
+  }
+
+  return {
+    kind: "resolved",
+    email: result.verification.email,
+    headers: result.headers,
+  };
+}
+
+/**
+ * Copy Clerk's headers onto our response. `Set-Cookie` is handled separately
+ * because iterating `Headers` folds repeated cookies into one comma-joined
+ * value, which browsers reject.
+ */
+function applyClerkHeaders(
+  response: ServerResponse,
+  headers: Headers | undefined,
+  options: { skipLocation?: boolean } = {},
+): void {
+  if (!headers) return;
+  const setCookie = headers.getSetCookie?.() ?? [];
+  if (setCookie.length > 0) response.setHeader("set-cookie", setCookie);
+  for (const [name, value] of headers.entries()) {
+    const lower = name.toLowerCase();
+    if (lower === "set-cookie") continue;
+    if (options.skipLocation && lower === "location") continue;
+    response.setHeader(name, value);
+  }
 }
 
 /**

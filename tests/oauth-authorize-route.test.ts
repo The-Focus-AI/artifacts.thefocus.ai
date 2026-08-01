@@ -152,6 +152,96 @@ describe("authorize route", () => {
     expect(await response.text()).toContain("did not come from");
   });
 
+  it("forwards Clerk's Set-Cookie so the consent POST still has a session", async () => {
+    const store = new InMemoryOAuthStore();
+    const headers = new Headers();
+    headers.append("set-cookie", "__session=abc; Path=/; HttpOnly");
+    headers.append("set-cookie", "__client_uat=1; Path=/");
+    const base = await serve({
+      clerk: {
+        authenticateRequest: async () => ({
+          kind: "authenticated" as const,
+          verification: { email: "publisher@thefocus.ai", userId: "user_1" },
+          headers,
+        }),
+      },
+      store,
+    });
+    const clientId = await registeredClient(store);
+
+    const response = await fetch(
+      `${base}/oauth/authorize?${authorizeQuery(clientId)}`,
+    );
+
+    // Repeated cookies must stay separate; folding them into one comma-joined
+    // header is what silently drops the session.
+    expect(response.headers.getSetCookie()).toEqual([
+      "__session=abc; Path=/; HttpOnly",
+      "__client_uat=1; Path=/",
+    ]);
+  });
+
+  it("stops instead of looping when sign-in returns without a session", async () => {
+    const store = new InMemoryOAuthStore();
+    const base = await serve({
+      clerk: clerkStub({ kind: "unauthenticated", message: "no session" }),
+      store,
+    });
+    const clientId = await registeredClient(store);
+    const query = authorizeQuery(clientId);
+
+    // First visit: one redirect to sign-in, carrying the attempt marker.
+    const first = await fetch(`${base}/oauth/authorize?${query}`, {
+      redirect: "manual",
+    });
+    expect(first.status).toBe(302);
+    const signInUrl = new URL(first.headers.get("location")!);
+    const resume = new URL(signInUrl.searchParams.get("redirect_url")!);
+    expect(resume.searchParams.get("__artifacts_signin")).toBe("1");
+    expect(resume.searchParams.get("client_id")).toBe(clientId);
+
+    // Clerk bounces the browser back still unauthenticated: explain, do not
+    // redirect again.
+    const second = await fetch(`${base}${resume.pathname}${resume.search}`, {
+      redirect: "manual",
+    });
+    expect(second.status).toBe(401);
+    expect(second.headers.get("location")).toBeNull();
+    expect(await second.text()).toContain("did not receive a session");
+  });
+
+  it("resumes an unauthenticated consent POST with its parameters intact", async () => {
+    const store = new InMemoryOAuthStore();
+    const base = await serve({
+      clerk: clerkStub({ kind: "unauthenticated", message: "no session" }),
+      store,
+    });
+    const clientId = await registeredClient(store);
+
+    const response = await fetch(`${base}/oauth/authorize`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        origin: base,
+      },
+      body: new URLSearchParams([
+        ...authorizeQuery(clientId).entries(),
+        ["approve", "yes"],
+      ]),
+      redirect: "manual",
+    });
+
+    expect(response.status).toBe(302);
+    const resume = new URL(
+      new URL(response.headers.get("location")!).searchParams.get(
+        "redirect_url",
+      )!,
+    );
+    expect(resume.searchParams.get("client_id")).toBe(clientId);
+    expect(resume.searchParams.get("code_challenge")).toBeTruthy();
+    expect(resume.searchParams.get("approve")).toBeNull();
+  });
+
   it("treats Cancel as a refusal without issuing a code", async () => {
     const store = new InMemoryOAuthStore();
     const base = await serve({ clerk: signedIn, store });

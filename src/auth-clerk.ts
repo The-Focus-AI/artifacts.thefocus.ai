@@ -6,10 +6,21 @@ export interface ClerkVerification {
   userId: string;
 }
 
+/**
+ * `headers` carries what Clerk wants written onto our response — most
+ * importantly the `Set-Cookie` that persists a session on this domain after a
+ * handshake. A route that authenticates more than once (a consent page and
+ * then its approval POST, say) MUST forward them, or the second request looks
+ * signed out and the flow loops back through sign-in forever.
+ */
 export type ClerkAuthResult =
-  | { kind: "authenticated"; verification: ClerkVerification }
+  | {
+      kind: "authenticated";
+      verification: ClerkVerification;
+      headers?: Headers;
+    }
   | { kind: "redirect"; headers: Headers }
-  | { kind: "unauthenticated"; message: string };
+  | { kind: "unauthenticated"; message: string; headers?: Headers };
 
 export interface ClerkVerifier {
   authenticateRequest(request: IncomingMessage): Promise<ClerkAuthResult>;
@@ -51,6 +62,7 @@ export function createServerClerkVerifier(
             requestState.message ||
             requestState.reason ||
             "Could not verify your Clerk session.",
+          headers: requestState.headers,
         };
       }
 
@@ -74,6 +86,7 @@ export function createServerClerkVerifier(
       return {
         kind: "authenticated",
         verification: { email, userId: auth.userId },
+        headers: requestState.headers,
       };
     },
   };
