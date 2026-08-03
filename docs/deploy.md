@@ -104,8 +104,8 @@ fnox exec -- node dist/src/cli.js publish /tmp/artifact-smoke.html
 Then curl the returned Publication URL:
 
 ```bash
-curl -i https://artifacts.thefocus.ai/a/{opaque}
-curl -I https://artifacts.thefocus.ai/a/{opaque}
+curl -i https://artifacts.thefocus.ai/a/{opaque}/
+curl -I https://artifacts.thefocus.ai/a/{opaque}/
 ```
 
 Expected response:

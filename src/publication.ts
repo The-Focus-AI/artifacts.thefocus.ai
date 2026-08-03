@@ -25,6 +25,7 @@ import {
 } from "./storage/artifact-content.js";
 import {
   createNeonPublicationMetadataStore,
+  normalizePublicationUrlPath,
   type PublicationMetadataStore,
 } from "./storage/publication-metadata.js";
 
@@ -425,6 +426,17 @@ export async function servePublicationRequest({
     });
   }
 
+  const redirectLocation = trailingSlashRedirectLocation(
+    request.url,
+    route.artifactPath,
+  );
+  if (redirectLocation) {
+    return new Response(null, {
+      status: 308,
+      headers: publicationSafetyHeaders({ location: redirectLocation }),
+    });
+  }
+
   const activeContent = await contentStore.read(
     publication.activeArtifactLocator,
   );
@@ -489,6 +501,23 @@ export function publicationRouteFromUrl(
   };
 }
 
+/**
+ * A root Publication or View is served at both `/a/{id}` and `/a/{id}/`, but
+ * only the trailing-slash form lets relative links inside the served document
+ * resolve under the id instead of the site root. Returns the Location to
+ * redirect a bare root request to, or null when the request is already
+ * canonical or addresses a nested path.
+ */
+export function trailingSlashRedirectLocation(
+  requestUrl: string,
+  nestedPath: string,
+): string | null {
+  if (nestedPath !== "") return null;
+  const url = new URL(requestUrl);
+  if (url.pathname.endsWith("/")) return null;
+  return `${url.pathname}/${url.search}`;
+}
+
 export function absolutePublicationUrl(
   publicBaseUrl: string,
   publicationUrlPath: string,
@@ -496,7 +525,11 @@ export function absolutePublicationUrl(
   const base = publicBaseUrl.endsWith("/")
     ? publicBaseUrl
     : `${publicBaseUrl}/`;
-  return new URL(publicationUrlPath.replace(/^\/+/, ""), base).toString();
+  const path = normalizePublicationUrlPath(publicationUrlPath).replace(
+    /^\/+/,
+    "",
+  );
+  return new URL(path, base).toString();
 }
 
 export function createOpaqueId(): string {

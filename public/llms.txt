@@ -2,7 +2,7 @@
 
 > Dynamic publishing skill for AI agents that create HTML files, reports, prototypes, mockups, and static bundles that need a shareable client-facing URL.
 
-Artifacts turns local agent output into an unlisted Publication URL. A verified TheFocus.AI Publisher can publish one HTML file or one directory with an Entry Page, then share the resulting `/a/{id}` URL with a human reviewer. The service is intentionally CLI-first: agents should use the npm package, not a dashboard.
+Artifacts turns local agent output into an unlisted Publication URL. A verified TheFocus.AI Publisher can publish one HTML file or one directory with an Entry Page, then share the resulting `/a/{id}/` URL with a human reviewer. The service is intentionally CLI-first: agents should use the npm package, not a dashboard.
 
 ## Install the skill
 
@@ -36,7 +36,7 @@ If local skill text and live docs disagree, prefer this `llms.txt`, live CLI out
 5. If the Artifact should come down, remove it:
 
    ```bash
-   npx @the-focus-ai/artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ --yes
+   npx @the-focus-ai/artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ/ --yes
    ```
 
 For non-interactive agent sessions, use `THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_...`. Browser login is available with `npx @the-focus-ai/artifacts login` when a human Publisher is present.
@@ -45,7 +45,7 @@ Use `npx @the-focus-ai/artifacts list` to see your Publications and their titles
 
    ```text
    LAST UPDATED              STATUS    TITLE                            PUBLICATION URL
-   2026-06-23T...            active    Q2 Results                       https://artifacts.thefocus.ai/a/Ab3xY9kQ
+   2026-06-23T...            active    Q2 Results                       https://artifacts.thefocus.ai/a/Ab3xY9kQ/
    ```
 
 ## Living Docs: collaborative Markdown review
@@ -55,19 +55,19 @@ A Living Doc is a mutable Markdown document an agent publishes so a human can ed
 Publish the Markdown file including any YAML front matter (`---` … `---` at the top). The host never strips front matter on publish, image rewrite, or pull. Put `title:` in front matter when you have one; `--title` overrides. The View Link renders the body only; stored Markdown and `doc pull` keep the front matter.
 
 ```bash
-# Publish a Markdown file (front matter preserved); prints JSON with viewUrl (/d/{id}) and reviewUrl (/r/{id})
+# Publish a Markdown file (front matter preserved); prints JSON with viewUrl (/d/{id}/) and reviewUrl (/r/{id}/)
 npx @the-focus-ai/artifacts doc publish ./proposal.md --title "Proposal"
 
 # Pull feedback: cuts a numbered Version; prints current Markdown, a diff
 # versus the previous Version, and open reviewer Comments as JSON
-npx @the-focus-ai/artifacts doc pull https://artifacts.thefocus.ai/d/Ab3xY9kQ
+npx @the-focus-ai/artifacts doc pull https://artifacts.thefocus.ai/d/Ab3xY9kQ/
 
 # Respond with span-anchored Suggestions and Comment replies (JSON on stdin or --body file)
 echo '{"suggestions":[{"anchorQuote":"exact text from the doc","replacement":"new text","note":"why"}],"replies":[{"parentCommentId":"...","body":"..."}]}' \
-  | npx @the-focus-ai/artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ
+  | npx @the-focus-ai/artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ/
 
 npx @the-focus-ai/artifacts doc list
-npx @the-focus-ai/artifacts doc remove https://artifacts.thefocus.ai/d/Ab3xY9kQ --yes
+npx @the-focus-ai/artifacts doc remove https://artifacts.thefocus.ai/d/Ab3xY9kQ/ --yes
 ```
 
 Agent loop: publish, hand the human the Review Link (`/r/...` — a bearer capability, no login; anyone holding it can edit), then `doc pull` on your next turn, `doc respond`, and repeat. Suggestions are never auto-applied; the human accepts or rejects each one in the editor, shown inline as tracked changes. Keep `anchorQuote` an exact substring of the pulled Markdown, and include `anchorStart` (character offset) when the quote appears more than once. Do not crawl, guess, or enumerate `/d/` or `/r/` URLs.

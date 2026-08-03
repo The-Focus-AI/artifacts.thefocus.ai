@@ -31,7 +31,7 @@ describeWithDatabase("live Neon/Postgres Publication metadata storage", () => {
         revisionWindowExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
       });
       expect(created.opaqueId).toBe(opaqueId);
-      expect(created.publicationUrlPath).toBe(`/a/${opaqueId}`);
+      expect(created.publicationUrlPath).toBe(`/a/${opaqueId}/`);
 
       const read = await store.getByOpaqueId(opaqueId);
       expect(read?.publisherEmail).toBe("storage-test@thefocus.ai");

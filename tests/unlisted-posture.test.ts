@@ -38,10 +38,18 @@ describe("minimal landing page", () => {
       source: "/a/:opaque",
       destination: "/api/a/:opaque",
     });
+    // The trailing-slash form is tagged so the handler can tell the canonical
+    // Publication URL apart from the bare form it redirects.
     expect(vercelConfig.rewrites).toContainEqual({
       source: "/a/:opaque/",
-      destination: "/api/a/:opaque",
+      destination: "/api/a/:opaque?trailingSlash=1",
     });
+    const rewrites = vercelConfig.rewrites ?? [];
+    expect(
+      rewrites.findIndex((rewrite) => rewrite.source === "/a/:opaque/"),
+    ).toBeLessThan(
+      rewrites.findIndex((rewrite) => rewrite.source === "/a/:opaque"),
+    );
     expect(vercelConfig.rewrites).toContainEqual({
       source: "/a/:opaque/:path*",
       destination: "/api/a/:opaque?path=:path*",

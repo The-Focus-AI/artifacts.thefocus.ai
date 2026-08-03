@@ -17,7 +17,7 @@ A path inside a directory Artifact that is served under its Publication URL. Art
 _Avoid_: Route, URL path, directory listing
 
 **Publication**:
-A hosted Artifact available at a short opaque unlisted URL. A Publication is intended to keep a stable client-facing URL while showing the latest synced version of its Artifact.
+A hosted Artifact available at a short opaque unlisted URL. A Publication is intended to keep a stable client-facing URL while showing the latest synced version of its Artifact. The canonical Publication URL ends in a slash (`/a/{id}/`) so relative links in the Entry Page resolve under the Publication; the bare form redirects to it. The same rule applies to a Living Doc's View Link and Review Link.
 _Avoid_: Deployment, upload, share link, channel, token
 
 **Unlisted**:

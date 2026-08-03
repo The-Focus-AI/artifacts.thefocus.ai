@@ -215,7 +215,7 @@ describe("MCP Artifact publishing", () => {
     )) as { publicationUrl: string; artifactPaths: string[] };
 
     expect(result.publicationUrl).toMatch(
-      /^https:\/\/artifacts\.thefocus\.ai\/a\/[A-Za-z0-9_-]+$/,
+      /^https:\/\/artifacts\.thefocus\.ai\/a\/[A-Za-z0-9_-]+\/$/,
     );
   });
 

@@ -57,7 +57,7 @@ const sample = await publishLivingDoc({
     "comment from the sidebar. Then pull feedback from the agent side:",
     "",
     "```bash",
-    `THEFOCUS_ARTIFACTS_TOKEN=<token> pnpm artifacts doc pull ${baseUrl}/d/<opaque> --base-url ${baseUrl}`,
+    `THEFOCUS_ARTIFACTS_TOKEN=<token> pnpm artifacts doc pull ${baseUrl}/d/<opaque>/ --base-url ${baseUrl}`,
     "```",
   ].join("\n"),
   publisherEmail: "dev@thefocus.ai",

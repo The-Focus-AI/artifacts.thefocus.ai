@@ -74,7 +74,7 @@ Remove a Publication with an interactive confirmation, or pass `--yes` for non-i
 
 ```bash
 THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
-fnox exec -- pnpm artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ --yes
+fnox exec -- pnpm artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ/ --yes
 ```
 
 Removal marks the Publication as removed, clears matching Local Source state when present, deletes the active Artifact contents from Blob storage, and makes the Publication URL return 404.
@@ -92,8 +92,8 @@ Other CLI management commands:
 
 ```bash
 pnpm artifacts list
-pnpm artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ
-pnpm artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ --yes
+pnpm artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ/
+pnpm artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ/ --yes
 pnpm artifacts logout
 ```
 
@@ -101,11 +101,15 @@ Packaging applies built-in safety rules before upload: obvious secret, dependenc
 
 `ARTIFACTS_PUBLIC_BASE_URL` defaults to `https://artifacts.thefocus.ai`; set it only when publishing against a Vercel Preview or another host that serves this app. Published Artifacts are served by the Vercel rewrite from `/a/{opaque}` and nested `/a/{opaque}/{path}` URLs to the API functions with `Cache-Control: no-store` and `X-Robots-Tag: noindex, nofollow` headers.
 
+### Trailing slashes
+
+Every URL the CLI, the MCP tools, and the API return for a Publication root or a Living Doc ends in a slash — `https://artifacts.thefocus.ai/a/Ab3xY9kQ/`, not `/a/Ab3xY9kQ`. Without it, a relative link in the Entry Page (`assets/app.css`) resolves against the site root instead of the Publication and 404s. Requests to the bare form still work: they answer `308` to the trailing-slash form, so URLs shared before this was canonical keep serving and their relative links start resolving.
+
 ## Living Docs
 
 A **Living Doc** is a collaborative Markdown document an agent publishes so a human can edit it and comment on it, then the agent pulls that feedback back to continue the work. Unlike a Publication (read-only, static), a Living Doc is mutable and two-party. See [docs/adr/0005-living-docs-agent-human-review-loop.md](docs/adr/0005-living-docs-agent-human-review-loop.md) for the design and [CONTEXT.md](CONTEXT.md) for the vocabulary.
 
-Publishing a Living Doc returns two URLs: a read-only **View Link** (`/d/{opaque}`) and a capability **Review Link** (`/r/{review}`). Hand the Review Link to whoever should give feedback — no login required. The Review Link opens a WYSIWYG editor (Tiptap) where the Reviewer edits the rendered document directly; edits autosave continuously as Markdown. Selecting text pops up an inline Comment button, and pending agent Suggestions render in the document as tracked changes (strikethrough original, replacement alongside, accept/reject buttons), falling back to sidebar cards when a Suggestion's anchor spans multiple blocks.
+Publishing a Living Doc returns two URLs: a read-only **View Link** (`/d/{opaque}/`) and a capability **Review Link** (`/r/{review}/`). Hand the Review Link to whoever should give feedback — no login required. The Review Link opens a WYSIWYG editor (Tiptap) where the Reviewer edits the rendered document directly; edits autosave continuously as Markdown. Selecting text pops up an inline Comment button, and pending agent Suggestions render in the document as tracked changes (strikethrough original, replacement alongside, accept/reject buttons), falling back to sidebar cards when a Suggestion's anchor spans multiple blocks.
 
 **YAML front matter is part of the Living Doc.** `doc publish` uploads the file as-is (including a leading `---` … `---` block). Image rewrite and Doc Asset upload never strip front matter. Prefer a `title:` field there when the file has one; `--title` still overrides. The View Link renders the Markdown body only so fences are not shown as horizontal rules — the stored Markdown and `doc pull` output keep the front matter intact.
 
@@ -119,7 +123,7 @@ fnox exec -- pnpm artifacts doc publish ./proposal.md --title "Proposal"
 
 # Pull feedback. Cuts an immutable Version and prints the current Markdown,
 # a diff versus the previous Version, and open reviewer Comments.
-pnpm artifacts doc pull https://artifacts.thefocus.ai/d/Ab3xY9kQ
+pnpm artifacts doc pull https://artifacts.thefocus.ai/d/Ab3xY9kQ/
 
 # Respond with span-anchored Suggestions and replies to Comments.
 # Body JSON: { "suggestions": [{ "anchorQuote": "...", "replacement": "...",
@@ -128,14 +132,14 @@ pnpm artifacts doc pull https://artifacts.thefocus.ai/d/Ab3xY9kQ
 # anchorStart (optional) is the quote's character offset in the pulled
 # Markdown; include it whenever the quoted text could appear more than once,
 # since it decides which occurrence an accepted Suggestion replaces.
-pnpm artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ --body feedback.json
-cat feedback.json | pnpm artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ
+pnpm artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ/ --body feedback.json
+cat feedback.json | pnpm artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ/
 
 # List your Living Docs
 pnpm artifacts doc list
 
 # Remove a Living Doc (disables both the View Link and the Review Link)
-pnpm artifacts doc remove https://artifacts.thefocus.ai/d/Ab3xY9kQ --yes
+pnpm artifacts doc remove https://artifacts.thefocus.ai/d/Ab3xY9kQ/ --yes
 ```
 
 Suggestions are never applied automatically — the Reviewer accepts or rejects each one in the editor, and accepting applies the change to the live Markdown at the anchored quote (nearest `anchorStart` when it matches more than once). If the Reviewer has edited the quoted text away, the Suggestion stays pending so its replacement remains visible rather than being marked accepted without applying. Each `doc pull` advances the Version number so both sides can refer back to "as of Version 3." Because the review surface is reachable by anyone holding the Review Link, all inputs are size-capped server-side (2 MB for the Markdown, 64 KB for comments, suggestion text, and replies). Living Docs require `migrations/0005_create_living_docs.sql`.

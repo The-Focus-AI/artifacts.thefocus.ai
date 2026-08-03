@@ -57,7 +57,7 @@ describe("v1 end-to-end smoke flow", () => {
 
     expect(published).toMatchObject({
       decision: "created",
-      publicationUrl: "https://artifacts.thefocus.ai/a/SmokeUrl",
+      publicationUrl: "https://artifacts.thefocus.ai/a/SmokeUrl/",
     });
 
     const firstView = await servePublicationRequest({

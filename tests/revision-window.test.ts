@@ -39,7 +39,7 @@ describe("Revision Window publishing decisions", () => {
 
     expect(first.decision).toBe("created");
     expect(first.publicationUrl).toBe(
-      "https://artifacts.thefocus.ai/a/SameUrl",
+      "https://artifacts.thefocus.ai/a/SameUrl/",
     );
     expect(first.revisionWindowExpiresAt.toISOString()).toBe(
       "2026-05-20T12:15:00.000Z",
@@ -72,7 +72,7 @@ describe("Revision Window publishing decisions", () => {
     );
 
     const response = await servePublicationRequest({
-      request: new Request("https://artifacts.thefocus.ai/a/SameUrl"),
+      request: new Request("https://artifacts.thefocus.ai/a/SameUrl/"),
       metadataStore,
       contentStore,
     });
@@ -176,7 +176,7 @@ describe("Revision Window publishing decisions", () => {
       "2026-05-20T13:15:00.000Z",
     );
     const response = await servePublicationRequest({
-      request: new Request("https://artifacts.thefocus.ai/a/TargetUrl"),
+      request: new Request("https://artifacts.thefocus.ai/a/TargetUrl/"),
       metadataStore,
       contentStore,
     });

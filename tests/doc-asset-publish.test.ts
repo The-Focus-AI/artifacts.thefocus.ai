@@ -119,7 +119,7 @@ describe("Doc Asset publish end-to-end", () => {
     expect(Buffer.from(await asset.arrayBuffer())).toEqual(png);
 
     const view = await serveLivingDocViewRequest({
-      request: new Request("https://artifacts.thefocus.ai/d/pubDoc1"),
+      request: new Request("https://artifacts.thefocus.ai/d/pubDoc1/"),
       store,
       contentStore,
     });

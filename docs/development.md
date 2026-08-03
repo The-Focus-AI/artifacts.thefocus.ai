@@ -21,6 +21,11 @@ Apply `migrations/0001_publications.sql` to the Neon/Postgres database before us
 - `title` (human-readable title, derived from `<title>` or supplied with `--title`)
 - created, updated, and removed timestamps
 
+`publication_url_path` is canonically `/a/{opaque_id}/`. Apply
+`migrations/0008_publication_url_path_trailing_slash.sql` to backfill rows
+written before the trailing slash was canonical. Reads normalize either shape,
+so the migration can run before or after the deploy.
+
 Apply `migrations/0005_create_living_docs.sql` for the Living Doc collaboration
 feature (see `docs/adr/0005-living-docs-agent-human-review-loop.md`). It adds:
 

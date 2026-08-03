@@ -36,9 +36,9 @@ describe("Living Doc round-trip", () => {
     const store = new InMemoryLivingDocMetadataStore();
     const result = await publish(store, "# Proposal\n\nFirst draft.");
 
-    expect(result.viewUrl).toBe("https://artifacts.thefocus.ai/d/docOpaque1");
+    expect(result.viewUrl).toBe("https://artifacts.thefocus.ai/d/docOpaque1/");
     expect(result.reviewUrl).toBe(
-      "https://artifacts.thefocus.ai/r/reviewSecret1",
+      "https://artifacts.thefocus.ai/r/reviewSecret1/",
     );
     expect(result.title).toBe("Proposal");
   });

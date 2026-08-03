@@ -79,13 +79,21 @@ describe("Doc Asset serving", () => {
     expect(Buffer.from(await response.arrayBuffer())).toEqual(png);
   });
 
-  it("keeps bare /d/{opaqueId} as the HTML View", async () => {
+  it("keeps /d/{opaqueId}/ as the HTML View and redirects the bare form to it", async () => {
     const store = new InMemoryLivingDocMetadataStore();
     const contentStore = new InMemoryDocAssetContentStore();
     await publishDoc(store, "# Title\n\nBody");
 
-    const response = await serveLivingDocViewRequest({
+    const bare = await serveLivingDocViewRequest({
       request: new Request("https://artifacts.thefocus.ai/d/docOpaque1"),
+      store,
+      contentStore,
+    });
+    expect(bare.status).toBe(308);
+    expect(bare.headers.get("location")).toBe("/d/docOpaque1/");
+
+    const response = await serveLivingDocViewRequest({
+      request: new Request("https://artifacts.thefocus.ai/d/docOpaque1/"),
       store,
       contentStore,
     });

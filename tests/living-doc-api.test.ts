@@ -109,7 +109,7 @@ describe("Living Doc agent API", () => {
     ).json()) as { opaqueId: string };
 
     const html = await serveLivingDocViewRequest({
-      request: new Request(`https://x/d/${published.opaqueId}`),
+      request: new Request(`https://x/d/${published.opaqueId}/`),
       store,
     });
     expect(html.headers.get("content-type")).toContain("text/html");
@@ -148,7 +148,7 @@ Paragraph.
     expect(published.title).toBe("Meta Title");
 
     const html = await serveLivingDocViewRequest({
-      request: new Request(`https://x/d/${published.opaqueId}`),
+      request: new Request(`https://x/d/${published.opaqueId}/`),
       store,
     });
     const page = await html.text();
@@ -184,7 +184,7 @@ Paragraph.
     ).json()) as { opaqueId: string };
 
     const html = await serveLivingDocViewRequest({
-      request: new Request(`https://x/d/${published.opaqueId}`),
+      request: new Request(`https://x/d/${published.opaqueId}/`),
       store,
     });
     const page = await html.text();
@@ -214,7 +214,7 @@ Paragraph.
     expect(removed.status).toBe("removed");
 
     const view = await serveLivingDocViewRequest({
-      request: new Request(`https://x/d/${published.opaqueId}`),
+      request: new Request(`https://x/d/${published.opaqueId}/`),
       store,
     });
     expect(view.status).toBe(404);

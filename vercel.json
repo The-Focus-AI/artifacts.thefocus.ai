@@ -140,11 +140,11 @@
       "destination": "/api/oauth/register"
     },
     {
-      "source": "/a/:opaque",
-      "destination": "/api/a/:opaque"
+      "source": "/a/:opaque/",
+      "destination": "/api/a/:opaque?trailingSlash=1"
     },
     {
-      "source": "/a/:opaque/",
+      "source": "/a/:opaque",
       "destination": "/api/a/:opaque"
     },
     {
@@ -152,11 +152,11 @@
       "destination": "/api/a/:opaque?path=:path*"
     },
     {
-      "source": "/d/:opaque",
-      "destination": "/api/d/:opaque"
+      "source": "/d/:opaque/",
+      "destination": "/api/d/:opaque?trailingSlash=1"
     },
     {
-      "source": "/d/:opaque/",
+      "source": "/d/:opaque",
       "destination": "/api/d/:opaque"
     },
     {

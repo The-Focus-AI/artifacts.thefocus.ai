@@ -14,8 +14,9 @@ description: >
 Skill version: 1.4.0
 
 Artifacts turns local agent output into an unlisted Publication URL at
-`https://artifacts.thefocus.ai/a/{id}`, or a Living Doc review loop at
-`/d/{id}` (view) and `/r/{id}` (review).
+`https://artifacts.thefocus.ai/a/{id}/`, or a Living Doc review loop at
+`/d/{id}/` (view) and `/r/{id}/` (review). These URLs end in a slash so
+relative links inside the Artifact resolve; pass them on exactly as printed.
 
 The service is CLI-first. Prefer the npm package over raw HTTP.
 
@@ -82,7 +83,7 @@ npx @the-focus-ai/artifacts publish ./dist --open
 cat report.html | npx @the-focus-ai/artifacts publish - --open
 ```
 
-Always return the printed Publication URL to the user.
+Always return the printed Publication URL to the user, trailing slash included.
 
 Useful flags:
 
@@ -97,7 +98,7 @@ List and remove:
 
 ```bash
 npx @the-focus-ai/artifacts list
-npx @the-focus-ai/artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ --yes
+npx @the-focus-ai/artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ/ --yes
 ```
 
 ## Living Docs
@@ -111,9 +112,9 @@ npx @the-focus-ai/artifacts doc publish ./proposal.md --title "Proposal"
 Hand the human the Review Link (`/r/...`). It is a bearer capability: anyone holding it can edit. Then on later turns:
 
 ```bash
-npx @the-focus-ai/artifacts doc pull https://artifacts.thefocus.ai/d/Ab3xY9kQ
+npx @the-focus-ai/artifacts doc pull https://artifacts.thefocus.ai/d/Ab3xY9kQ/
 echo '{"suggestions":[{"anchorQuote":"exact text from the doc","replacement":"new text","note":"why"}],"replies":[{"parentCommentId":"...","body":"..."}]}' \
-  | npx @the-focus-ai/artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ
+  | npx @the-focus-ai/artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ/
 ```
 
 Rules:

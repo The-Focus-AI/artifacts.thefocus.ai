@@ -163,7 +163,7 @@ title: From Front Matter
     );
 
     const view = await serveLivingDocViewRequest({
-      request: new Request("https://artifacts.thefocus.ai/d/fmDoc1"),
+      request: new Request("https://artifacts.thefocus.ai/d/fmDoc1/"),
       store,
       contentStore,
     });

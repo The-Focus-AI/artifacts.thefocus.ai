@@ -36,7 +36,7 @@ describe("Publication metadata storage", () => {
       activeArtifactLocator: "blob://artifacts/Ab3xY9kQ/manifest-1/index.html",
       localSourcePath: "/Users/example/report",
     });
-    expect(created.publicationUrlPath).toBe("/a/Ab3xY9kQ");
+    expect(created.publicationUrlPath).toBe("/a/Ab3xY9kQ/");
     expect(created.updatedAt.toISOString()).toBe("2026-05-20T12:00:00.000Z");
 
     const updated = await store.update("Ab3xY9kQ", {

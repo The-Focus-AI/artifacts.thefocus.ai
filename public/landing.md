@@ -25,7 +25,7 @@ pbpaste | npx @the-focus-ai/artifacts publish - --open
 The CLI prints a Publication URL like:
 
 ```text
-https://artifacts.thefocus.ai/a/Ab3xY9kQ
+https://artifacts.thefocus.ai/a/Ab3xY9kQ/
 ```
 
 Share that URL with the user or client. Anyone with the exact URL can view it without logging in, but Publications are not listed publicly and `/a/` URLs are excluded from crawler discovery.
@@ -52,12 +52,12 @@ npx @the-focus-ai/artifacts doc publish ./proposal.md --title "Proposal"
 
 YAML front matter in the file is preserved on publish and pull (never stripped). The View Link renders the body; use a front-matter `title:` when present, or pass `--title`.
 
-This prints a read-only View Link (`/d/{id}`) and an editable Review Link (`/r/{id}`). Hand the Review Link to the human: it opens a WYSIWYG editor where they edit the rendered document directly (autosaved) and attach comments to selected text. On your next turn, pull their feedback and respond with span-anchored Suggestions they accept or reject inline:
+This prints a read-only View Link (`/d/{id}/`) and an editable Review Link (`/r/{id}/`). Hand the Review Link to the human: it opens a WYSIWYG editor where they edit the rendered document directly (autosaved) and attach comments to selected text. On your next turn, pull their feedback and respond with span-anchored Suggestions they accept or reject inline:
 
 ```bash
-npx @the-focus-ai/artifacts doc pull https://artifacts.thefocus.ai/d/Ab3xY9kQ
+npx @the-focus-ai/artifacts doc pull https://artifacts.thefocus.ai/d/Ab3xY9kQ/
 echo '{"suggestions":[{"anchorQuote":"exact text","replacement":"new text"}]}' \
-  | npx @the-focus-ai/artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ
+  | npx @the-focus-ai/artifacts doc respond https://artifacts.thefocus.ai/d/Ab3xY9kQ/
 ```
 
 Each pull cuts a numbered Version with a diff, so both sides can track the round-trip. Suggestions are never applied automatically.

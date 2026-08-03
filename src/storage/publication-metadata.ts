@@ -271,7 +271,16 @@ export function createNeonPublicationMetadataStore(
 }
 
 export function publicationUrlPathFor(opaqueId: string): string {
-  return `/a/${opaqueId}`;
+  return `/a/${opaqueId}/`;
+}
+
+/**
+ * A Publication root path ends in a slash so relative links inside the Entry
+ * Page resolve under the Publication instead of the site root. Rows written
+ * before that rule are normalized on read.
+ */
+export function normalizePublicationUrlPath(urlPath: string): string {
+  return urlPath.endsWith("/") ? urlPath : `${urlPath}/`;
 }
 
 interface PublicationRow {
@@ -295,7 +304,7 @@ function mapPublicationRow(
   if (!row) throw new Error("Expected Publication row");
   return {
     opaqueId: row.opaque_id,
-    publicationUrlPath: row.publication_url_path,
+    publicationUrlPath: normalizePublicationUrlPath(row.publication_url_path),
     publisherEmail: row.publisher_email,
     status: row.status,
     activeManifestRef: row.active_manifest_ref,

@@ -88,7 +88,27 @@ export function publicationRequestUrl(request: IncomingMessage): string {
   const host = request.headers.host ?? "localhost";
   const protocol = request.headers["x-forwarded-proto"] ?? "https";
   const artifactPath = artifactPathFromVercelRequest(request);
-  return `${protocol}://${host}/a/${artifactPath}`;
+  return `${protocol}://${host}/a/${artifactPath}${trailingSlashSuffix(request, artifactPath)}`;
+}
+
+/**
+ * Vercel rewrites `/a/{id}/` and `/a/{id}` to the same function path, so the
+ * trailing-slash form is tagged with `?trailingSlash=1` in `vercel.json`.
+ * Without that tag the handler could not tell the two apart and would redirect
+ * the canonical form to itself forever. The pathname check keeps the plain Node
+ * server (no rewrites) working.
+ */
+function trailingSlashSuffix(
+  request: IncomingMessage,
+  resolvedPath: string,
+): string {
+  if (resolvedPath.endsWith("/")) return "";
+  const url = new URL(request.url ?? "/", "https://localhost");
+  const tagged =
+    url.searchParams.has("trailingSlash") ||
+    (request as IncomingMessage & { query?: Record<string, unknown> }).query
+      ?.trailingSlash !== undefined;
+  return tagged || url.pathname.endsWith("/") ? "/" : "";
 }
 
 function artifactPathFromVercelRequest(request: IncomingMessage): string {
@@ -136,8 +156,10 @@ export function livingDocViewRequestUrl(request: IncomingMessage): string {
   const host = request.headers.host ?? "localhost";
   const protocol = request.headers["x-forwarded-proto"] ?? "https";
   const viewPath = livingDocPathFromVercelRequest(request);
-  const search = new URL(request.url ?? "/", "https://localhost").search;
-  return `${protocol}://${host}/d/${viewPath}${search}`;
+  const suffix = trailingSlashSuffix(request, viewPath);
+  const url = new URL(request.url ?? "/", "https://localhost");
+  url.searchParams.delete("trailingSlash");
+  return `${protocol}://${host}/d/${viewPath}${suffix}${url.search}`;
 }
 
 function livingDocPathFromVercelRequest(request: IncomingMessage): string {

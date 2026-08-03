@@ -5,10 +5,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  absolutePublicationUrl,
   InMemoryArtifactContentStore,
   InMemoryPublicationMetadataStore,
   InMemoryPublisherTokenStore,
   issuePublisherToken,
+  publicationRouteFromUrl,
   publishDirectoryArtifact,
   publishSingleFileArtifact,
   publishSingleFileArtifactWithPublisherToken,
@@ -33,9 +35,9 @@ describe("single-file publish/view path", () => {
       manifestRef: "manifest-1",
     });
 
-    expect(published.publicationUrlPath).toBe("/a/Ab3xY9kQ");
+    expect(published.publicationUrlPath).toBe("/a/Ab3xY9kQ/");
     expect(published.publicationUrl).toBe(
-      "https://artifacts.thefocus.ai/a/Ab3xY9kQ",
+      "https://artifacts.thefocus.ai/a/Ab3xY9kQ/",
     );
     await expect(
       metadataStore.getByOpaqueId("Ab3xY9kQ"),
@@ -140,7 +142,7 @@ describe("directory publish/view path", () => {
     });
 
     expect(published.publicationUrl).toBe(
-      "https://artifacts.thefocus.ai/a/Dir123",
+      "https://artifacts.thefocus.ai/a/Dir123/",
     );
     expect(published.entryArtifactPath).toBe("index.html");
     expect(published.artifactPaths.sort()).toEqual([
@@ -150,7 +152,7 @@ describe("directory publish/view path", () => {
     ]);
 
     const home = await servePublicationRequest({
-      request: new Request("https://artifacts.thefocus.ai/a/Dir123"),
+      request: new Request("https://artifacts.thefocus.ai/a/Dir123/"),
       metadataStore,
       contentStore,
     });
@@ -208,7 +210,7 @@ describe("directory publish/view path", () => {
 
     expect(published.entryArtifactPath).toBe("demo.html");
     const response = await servePublicationRequest({
-      request: new Request("https://artifacts.thefocus.ai/a/Demo123"),
+      request: new Request("https://artifacts.thefocus.ai/a/Demo123/"),
       metadataStore,
       contentStore,
     });
@@ -244,5 +246,97 @@ describe("directory publish/view path", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
       expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
     }
+  });
+});
+
+describe("canonical trailing-slash Publication URLs", () => {
+  it("redirects the bare Entry Page URL so relative links resolve under the Publication", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "artifacts-trailing-slash-"));
+    await mkdir(join(dir, "assets"));
+    await writeFile(
+      join(dir, "index.html"),
+      '<!doctype html><link rel="stylesheet" href="assets/app.css"><h1>Home</h1>',
+    );
+    await writeFile(join(dir, "assets", "app.css"), "body{color:red}");
+    const metadataStore = new InMemoryPublicationMetadataStore();
+    const contentStore = new InMemoryArtifactContentStore();
+
+    const published = await publishDirectoryArtifact({
+      directoryPath: dir,
+      publisherEmail: "publisher@thefocus.ai",
+      publicBaseUrl: "https://artifacts.thefocus.ai",
+      metadataStore,
+      contentStore,
+      opaqueId: "Slash1",
+      manifestRef: "manifest-slash",
+    });
+
+    expect(published.publicationUrl).toBe(
+      "https://artifacts.thefocus.ai/a/Slash1/",
+    );
+
+    const bare = await servePublicationRequest({
+      request: new Request("https://artifacts.thefocus.ai/a/Slash1"),
+      metadataStore,
+      contentStore,
+    });
+    expect(bare.status).toBe(308);
+    expect(bare.headers.get("location")).toBe("/a/Slash1/");
+    expect(bare.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+
+    // A relative link from the canonical Entry Page URL lands on the asset.
+    const assetUrl = new URL("assets/app.css", published.publicationUrl);
+    expect(assetUrl.toString()).toBe(
+      "https://artifacts.thefocus.ai/a/Slash1/assets/app.css",
+    );
+    const asset = await servePublicationRequest({
+      request: new Request(assetUrl),
+      metadataStore,
+      contentStore,
+    });
+    expect(asset.status).toBe(200);
+    await expect(asset.text()).resolves.toBe("body{color:red}");
+  });
+
+  it("does not redirect nested Artifact Paths and returns 404 before redirecting unknown ids", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "artifacts-no-redirect-"));
+    await mkdir(join(dir, "about"));
+    await writeFile(join(dir, "index.html"), "<h1>Home</h1>");
+    await writeFile(join(dir, "about", "index.html"), "<h1>About</h1>");
+    const metadataStore = new InMemoryPublicationMetadataStore();
+    const contentStore = new InMemoryArtifactContentStore();
+
+    await publishDirectoryArtifact({
+      directoryPath: dir,
+      publisherEmail: "publisher@thefocus.ai",
+      publicBaseUrl: "https://artifacts.thefocus.ai",
+      metadataStore,
+      contentStore,
+      opaqueId: "Slash2",
+      manifestRef: "manifest-slash-2",
+    });
+
+    const nested = await servePublicationRequest({
+      request: new Request("https://artifacts.thefocus.ai/a/Slash2/about/"),
+      metadataStore,
+      contentStore,
+    });
+    expect(nested.status).toBe(200);
+
+    const unknown = await servePublicationRequest({
+      request: new Request("https://artifacts.thefocus.ai/a/Unknown1"),
+      metadataStore,
+      contentStore,
+    });
+    expect(unknown.status).toBe(404);
+  });
+
+  it("normalizes Publication URL paths stored before the trailing slash was canonical", () => {
+    expect(
+      absolutePublicationUrl("https://artifacts.thefocus.ai", "/a/Legacy1"),
+    ).toBe("https://artifacts.thefocus.ai/a/Legacy1/");
+    expect(
+      publicationRouteFromUrl("https://artifacts.thefocus.ai/a/Legacy1/"),
+    ).toEqual({ opaqueId: "Legacy1", artifactPath: "" });
   });
 });

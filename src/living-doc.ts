@@ -9,7 +9,11 @@ import {
 import { formatUnifiedDiff } from "./diff.js";
 import { rewriteDocAssetMarkdown } from "./doc-asset-rewrite.js";
 import { deriveMarkdownTitle, markdownBody } from "./front-matter.js";
-import { createOpaqueId, defaultPublicBaseUrl } from "./publication.js";
+import {
+  createOpaqueId,
+  defaultPublicBaseUrl,
+  trailingSlashRedirectLocation,
+} from "./publication.js";
 import {
   contentTypeForDocAssetPath,
   type DocAssetContentStore,
@@ -622,6 +626,17 @@ export async function serveLivingDocViewRequest({
     });
   }
 
+  const redirectLocation = trailingSlashRedirectLocation(
+    request.url,
+    route.assetPath,
+  );
+  if (redirectLocation) {
+    return new Response(null, {
+      status: 308,
+      headers: livingDocSafetyHeaders({ location: redirectLocation }),
+    });
+  }
+
   return new Response(request.method === "HEAD" ? null : renderViewPage(doc), {
     status: 200,
     headers: livingDocSafetyHeaders({
@@ -861,7 +876,7 @@ export function livingDocViewUrl(
 ): string {
   return absoluteLivingDocUrl(
     publicBaseUrl,
-    `${livingDocViewPrefix}/${opaqueId}`,
+    `${livingDocViewPrefix}/${opaqueId}/`,
   );
 }
 
@@ -883,7 +898,7 @@ export function livingDocReviewUrl(
 ): string {
   return absoluteLivingDocUrl(
     publicBaseUrl,
-    `${livingDocReviewPrefix}/${reviewId}`,
+    `${livingDocReviewPrefix}/${reviewId}/`,
   );
 }
 
