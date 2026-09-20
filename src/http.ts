@@ -8,6 +8,7 @@ import {
   servePublicationRequest,
   type ServePublicationInput,
 } from "./publication.js";
+import { isPwaWildcardHost } from "./pwa-host.js";
 
 export async function writeWebResponseToNodeResponse(
   webResponse: Response,
@@ -85,10 +86,17 @@ function readNodeRequestBody(request: IncomingMessage): Promise<Buffer> {
 }
 
 export function publicationRequestUrl(request: IncomingMessage): string {
-  const host = request.headers.host ?? "localhost";
+  const hostHeader = request.headers.host ?? "localhost";
+  const host = hostHeader.split(":")[0] ?? hostHeader;
   const protocol = request.headers["x-forwarded-proto"] ?? "https";
+  if (isPwaWildcardHost(host)) {
+    const artifactPath = pwaArtifactPathFromVercelRequest(request);
+    return artifactPath
+      ? `${protocol}://${host}/${artifactPath}`
+      : `${protocol}://${host}/`;
+  }
   const artifactPath = artifactPathFromVercelRequest(request);
-  return `${protocol}://${host}/a/${artifactPath}`;
+  return `${protocol}://${hostHeader}/a/${artifactPath}`;
 }
 
 function artifactPathFromVercelRequest(request: IncomingMessage): string {
@@ -120,6 +128,22 @@ function artifactPathFromVercelRequest(request: IncomingMessage): string {
   if (pathname.startsWith(publicPrefix))
     return pathname.slice(publicPrefix.length);
   return pathname.split("/").filter(Boolean).at(-1) ?? "";
+}
+
+function pwaArtifactPathFromVercelRequest(request: IncomingMessage): string {
+  const queryPath = (
+    request as IncomingMessage & {
+      query?: { path?: unknown };
+    }
+  ).query?.path;
+  const fromQuery = queryPathFromVercelCatchAll(queryPath);
+  if (fromQuery) return fromQuery.replace(/^\/+/, "");
+
+  const pathname = new URL(request.url ?? "/", "https://localhost").pathname;
+  if (pathname === "/api/pwa" || pathname.startsWith("/api/pwa/")) {
+    return pathname.slice("/api/pwa".length).replace(/^\/+/, "");
+  }
+  return pathname.replace(/^\/+/, "");
 }
 
 function queryPathFromVercelCatchAll(path: unknown): string {

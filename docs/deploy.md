@@ -50,6 +50,47 @@ vercel alias ls --scope thefocusai | grep artifacts.thefocus.ai
 curl -I https://artifacts.thefocus.ai
 ```
 
+## PWA wildcard domain
+
+Installable PWAs are served at `https://{opaque}.artifacts.thefocus.ai/` (see
+`docs/adr/0009-pwas-require-wildcard-subdomain-at-origin-root.md`). Code already
+routes that host to the Publication at `/`. Production DNS and the Vercel
+wildcard domain are human-only:
+
+1. In the Vercel project, add the wildcard domain:
+
+   ```bash
+   vercel domains add "*.artifacts.thefocus.ai" --scope thefocusai
+   ```
+
+2. In Cloudflare for `thefocus.ai`, add a DNS-only record that matches the apex
+   posture (not proxied):
+
+   ```text
+   type: A
+   name: *.artifacts
+   content: 76.76.21.21
+   proxied: false
+   ttl: 300
+   ```
+
+   Vercel issues a wildcard certificate for `*.artifacts.thefocus.ai`
+   automatically once the domain is attached and DNS answers.
+
+3. Confirm a known Publication id:
+
+   ```bash
+   curl -I https://{opaque}.artifacts.thefocus.ai/
+   curl -I https://{opaque}.artifacts.thefocus.ai/manifest.webmanifest
+   curl -I https://{opaque}.artifacts.thefocus.ai/sw.js
+   ```
+
+Preview deployments on `*.vercel.app` cannot use this wildcard. PWA install
+testing is on the production custom domain.
+
+Apply `migrations/0008_add_publication_pwa.sql` to Neon before relying on
+`--pwa` share URLs in production (`publications.pwa`).
+
 ## Environment variables
 
 Production environment variables are configured in Vercel from fnox/1Password:

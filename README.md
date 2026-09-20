@@ -101,6 +101,23 @@ Packaging applies built-in safety rules before upload: obvious secret, dependenc
 
 `ARTIFACTS_PUBLIC_BASE_URL` defaults to `https://artifacts.thefocus.ai`; set it only when publishing against a Vercel Preview or another host that serves this app. Published Artifacts are served by the Vercel rewrite from `/a/{opaque}` and nested `/a/{opaque}/{path}` URLs to the API functions with `Cache-Control: no-store` and `X-Robots-Tag: noindex, nofollow` headers.
 
+## Installable PWAs
+
+An installable PWA is a Publication served at the origin root of its own wildcard host, not under `/a/{opaque}`. See [docs/adr/0009-pwas-require-wildcard-subdomain-at-origin-root.md](docs/adr/0009-pwas-require-wildcard-subdomain-at-origin-root.md).
+
+The bundle must be a directory Artifact with:
+
+- Entry Page at `index.html` (or `--entry-page`)
+- Web app manifest at `/manifest.webmanifest` or `/manifest.json` (`start_url` and `scope` should be `/`)
+- Service worker at `/sw.js` or `/service-worker.js` (register it at `/`)
+- At least one icon (`manifest.icons` or an icon image in the bundle)
+
+```bash
+npx @the-focus-ai/artifacts publish ./pwa --pwa --title "Installable demo"
+```
+
+That prints `https://{opaque}.artifacts.thefocus.ai/`. Ordinary publishes still print `/a/{opaque}`. MCP `publish_artifact` takes `pwa: true` for the same URL shape. Production needs the Cloudflare DNS-only wildcard and Vercel `*.artifacts.thefocus.ai` domain documented in [docs/deploy.md](docs/deploy.md).
+
 ## Living Docs
 
 A **Living Doc** is a collaborative Markdown document an agent publishes so a human can edit it and comment on it, then the agent pulls that feedback back to continue the work. Unlike a Publication (read-only, static), a Living Doc is mutable and two-party. See [docs/adr/0005-living-docs-agent-human-review-loop.md](docs/adr/0005-living-docs-agent-human-review-loop.md) for the design and [CONTEXT.md](CONTEXT.md) for the vocabulary.

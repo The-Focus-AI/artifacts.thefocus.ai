@@ -11,8 +11,8 @@ import {
   type PublishDocAssetPayload,
 } from "../living-doc.js";
 import {
-  absolutePublicationUrl,
   prepareInlineArtifactUpload,
+  publicationShareUrl,
   publishUploadedArtifact,
   removePublication,
   type InlineArtifactFile,
@@ -117,6 +117,7 @@ export const artifactsMcpTools: McpToolSpec[] = [
     description: [
       "Publish HTML as a new Artifact and return its unlisted Publication URL.",
       "Pass `html` for a single page, or `files` for a multi-file bundle with a root index.html.",
+      "Set `pwa` to publish an installable PWA at https://{opaque}.artifacts.thefocus.ai/ — never as a path under /a/{id}/.",
       publishSizeNote,
       updateNote,
     ].join(" "),
@@ -139,6 +140,12 @@ export const artifactsMcpTools: McpToolSpec[] = [
         .describe(
           "Human-readable Title. Falls back to the page's <title> element.",
         ),
+      pwa: z
+        .boolean()
+        .optional()
+        .describe(
+          "Publish as an installable PWA at the wildcard origin root. Requires a root manifest, service worker, and icon.",
+        ),
     },
     async run(args, context) {
       const upload = prepareInlineArtifactUpload({
@@ -153,6 +160,7 @@ export const artifactsMcpTools: McpToolSpec[] = [
         contentStore: context.artifactContentStore,
         stateStore: context.publicationStateStore,
         title: args.title as string | undefined,
+        pwa: args.pwa === true,
       });
       return {
         publicationUrl: result.publicationUrl,
@@ -187,6 +195,12 @@ export const artifactsMcpTools: McpToolSpec[] = [
         .optional()
         .describe("Entry Page path within `files`. Defaults to index.html."),
       title: z.string().optional().describe("Replacement Title."),
+      pwa: z
+        .boolean()
+        .optional()
+        .describe(
+          "Promote this Publication to an installable PWA at the wildcard origin root.",
+        ),
     },
     async run(args, context) {
       const upload = prepareInlineArtifactUpload({
@@ -202,6 +216,7 @@ export const artifactsMcpTools: McpToolSpec[] = [
         stateStore: context.publicationStateStore,
         updatePublicationUrl: args.publicationUrl as string,
         title: args.title as string | undefined,
+        pwa: args.pwa === true,
       });
       return {
         publicationUrl: result.publicationUrl,
@@ -248,10 +263,8 @@ export const artifactsMcpTools: McpToolSpec[] = [
         title: publication.title,
         status: publication.status,
         updatedAt: publication.updatedAt,
-        publicationUrl: absolutePublicationUrl(
-          context.publicBaseUrl,
-          publication.publicationUrlPath,
-        ),
+        publicationUrl: publicationShareUrl(context.publicBaseUrl, publication),
+        pwa: publication.pwa,
       }));
     },
   },

@@ -17,7 +17,8 @@
     "src/**/*.ts",
     "api/**/*.ts",
     "tests/**/*.ts",
-    "scripts/review-table.ts"
+    "scripts/review-table.ts",
+    "middleware.ts"
   ],
   "exclude": ["dist", "node_modules", ".pi", ".agents", ".sandcastle"]
 }

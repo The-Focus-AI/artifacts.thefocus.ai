@@ -27,6 +27,24 @@ import {
   createNeonPublicationMetadataStore,
   type PublicationMetadataStore,
 } from "./storage/publication-metadata.js";
+import {
+  assertPwaBundle,
+  isDnsSafeOpaqueId,
+  isPwaManifestArtifactPath,
+  isPwaServiceWorkerArtifactPath,
+  publicationShareUrl,
+  pwaRouteFromUrl,
+} from "./pwa-host.js";
+
+export {
+  assertPwaBundle,
+  defaultPwaParentHost,
+  isDnsSafeOpaqueId,
+  isPwaWildcardHost,
+  publicationShareUrl,
+  pwaPublicationUrl,
+  pwaRouteFromUrl,
+} from "./pwa-host.js";
 
 export const singleFileEntryArtifactPath = "index.html";
 export const defaultPublicBaseUrl = "https://artifacts.thefocus.ai";
@@ -155,6 +173,7 @@ export interface PublishArtifactInput {
   manifestRefFactory?: (body: Buffer) => string;
   now?: () => Date;
   title?: string;
+  pwa?: boolean;
 }
 
 export interface PublishArtifactResult {
@@ -219,6 +238,7 @@ export interface PublishUploadedArtifactInput {
   opaqueIdFactory?: () => string;
   now?: () => Date;
   title?: string;
+  pwa?: boolean;
 }
 
 interface DirectoryArtifactManifest {
@@ -334,6 +354,12 @@ export async function publishArtifact(
   const now = input.now?.() ?? new Date();
   const localSourcePath = await realpath(input.sourcePath);
   const revisionWindowExpiresAt = addMinutes(now, 15);
+  if (input.pwa) {
+    const prepared = await prepareArtifactUpload(input.sourcePath, {
+      entryPage: input.entryPage,
+    });
+    assertPwaBundle(prepared.files);
+  }
   const packaged = await packageArtifactSource(input, localSourcePath);
 
   if (input.updatePublicationUrl) {
@@ -417,11 +443,18 @@ export async function servePublicationRequest({
     });
   }
 
-  const publication = await metadataStore.getByOpaqueId(route.opaqueId);
+  const notFoundHeaders = publicationSafetyHeaders(
+    {},
+    { pwa: route.pwa, artifactPath: route.artifactPath },
+  );
+
+  const publication = await metadataStore.getByOpaqueId(route.opaqueId, {
+    ignoreCase: route.pwa,
+  });
   if (!publication || publication.status !== "active") {
     return new Response("Not found", {
       status: 404,
-      headers: publicationSafetyHeaders(),
+      headers: notFoundHeaders,
     });
   }
 
@@ -431,7 +464,7 @@ export async function servePublicationRequest({
   if (!activeContent) {
     return new Response("Not found", {
       status: 404,
-      headers: publicationSafetyHeaders(),
+      headers: notFoundHeaders,
     });
   }
 
@@ -449,13 +482,16 @@ export async function servePublicationRequest({
   if (!content) {
     return new Response("Not found", {
       status: 404,
-      headers: publicationSafetyHeaders(),
+      headers: notFoundHeaders,
     });
   }
 
-  const headers = publicationSafetyHeaders({
-    "content-type": content.contentType ?? "text/html; charset=utf-8",
-  });
+  const headers = publicationSafetyHeaders(
+    {
+      "content-type": content.contentType ?? "text/html; charset=utf-8",
+    },
+    { pwa: route.pwa, artifactPath: route.artifactPath },
+  );
   return new Response(
     request.method === "HEAD" ? null : new Uint8Array(content.body),
     {
@@ -465,10 +501,22 @@ export async function servePublicationRequest({
   );
 }
 
-export function publicationSafetyHeaders(headers: HeadersInit = {}): Headers {
-  return new Headers({
-    "cache-control": "no-store",
+export function publicationSafetyHeaders(
+  headers: HeadersInit = {},
+  options: { pwa?: boolean; artifactPath?: string } = {},
+): Headers {
+  const init: Record<string, string> = {
+    "cache-control": options.pwa ? "no-cache" : "no-store",
     "x-robots-tag": "noindex, nofollow",
+  };
+  if (
+    options.pwa &&
+    isPwaServiceWorkerArtifactPath(options.artifactPath ?? "")
+  ) {
+    init["service-worker-allowed"] = "/";
+  }
+  return new Headers({
+    ...init,
     ...headers,
   });
 }
@@ -479,28 +527,38 @@ export function opaqueIdFromPublicationUrl(url: string): string | null {
 
 export function publicationRouteFromUrl(
   url: string,
-): { opaqueId: string; artifactPath: string } | null {
+): { opaqueId: string; artifactPath: string; pwa: boolean } | null {
   const { pathname } = new URL(url);
   const match = pathname.match(/^\/a\/([^/]+)(?:\/(.*))?$/);
-  if (!match?.[1]) return null;
-  return {
-    opaqueId: match[1],
-    artifactPath: decodeURIComponent(match[2] ?? ""),
-  };
+  if (match?.[1]) {
+    return {
+      opaqueId: match[1],
+      artifactPath: decodeURIComponent(match[2] ?? ""),
+      pwa: false,
+    };
+  }
+  const pwaRoute = pwaRouteFromUrl(url);
+  if (!pwaRoute) return null;
+  return { ...pwaRoute, pwa: true };
 }
 
 export function absolutePublicationUrl(
   publicBaseUrl: string,
   publicationUrlPath: string,
 ): string {
-  const base = publicBaseUrl.endsWith("/")
-    ? publicBaseUrl
-    : `${publicBaseUrl}/`;
-  return new URL(publicationUrlPath.replace(/^\/+/, ""), base).toString();
+  return publicationShareUrl(publicBaseUrl, {
+    opaqueId: "",
+    publicationUrlPath,
+    pwa: false,
+  });
 }
 
 export function createOpaqueId(): string {
-  return randomBytes(8).toString("base64url");
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const id = randomBytes(8).toString("base64url");
+    if (isDnsSafeOpaqueId(id)) return id;
+  }
+  return randomBytes(8).toString("hex");
 }
 
 function createManifestRef(body: Buffer): string {
@@ -539,6 +597,7 @@ export async function publishArtifactFromEnvironment(
     forceNew?: boolean;
     updatePublicationUrl?: string;
     title?: string;
+    pwa?: boolean;
   } = {},
 ): Promise<PublishArtifactResult> {
   const env = options.env ?? process.env;
@@ -565,6 +624,7 @@ export async function publishArtifactFromEnvironment(
     forceNew: options.forceNew,
     updatePublicationUrl: options.updatePublicationUrl,
     title: options.title,
+    pwa: options.pwa,
   });
 }
 
@@ -775,6 +835,7 @@ function normalizeInlineArtifactPath(rawPath: string): string {
 export async function publishUploadedArtifact(
   input: PublishUploadedArtifactInput,
 ): Promise<PublishArtifactResult & { excludedArtifactPaths: string[] }> {
+  if (input.pwa) assertPwaBundle(input.upload.files);
   const now = input.now?.() ?? new Date();
   const revisionWindowExpiresAt = addMinutes(now, 15);
   const packaged = {
@@ -797,6 +858,7 @@ export async function publishUploadedArtifact(
     forceNew: input.forceNew,
     updatePublicationUrl: input.updatePublicationUrl,
     title: input.title,
+    pwa: input.pwa,
   } satisfies PublishArtifactInput;
 
   const result = input.updatePublicationUrl
@@ -1057,6 +1119,11 @@ async function createFreshPublication(
   const opaqueId = input.opaqueIdFactory?.() ?? createOpaqueId();
   const packaged = await input.packaged.writeForPublication(opaqueId);
   const title = input.title ?? packaged.derivedTitle ?? null;
+  if (input.pwa && !isDnsSafeOpaqueId(opaqueId)) {
+    throw new Error(
+      "PWA publish requires a DNS-safe Publication id. Use --new --pwa to create a fresh PWA Publication.",
+    );
+  }
   const publication = await input.metadataStore.create({
     opaqueId,
     publisherEmail: input.publisherEmail,
@@ -1065,11 +1132,13 @@ async function createFreshPublication(
     localSourcePath: input.localSourcePath,
     revisionWindowExpiresAt: input.revisionWindowExpiresAt,
     title,
+    pwa: input.pwa ?? false,
   });
-  const publicationUrl = absolutePublicationUrl(
-    input.publicBaseUrl,
-    publication.publicationUrlPath,
-  );
+  const publicationUrl = publicationShareUrl(input.publicBaseUrl, {
+    opaqueId,
+    publicationUrlPath: publication.publicationUrlPath,
+    pwa: publication.pwa,
+  });
   await input.stateStore.set({
     localSourcePath: input.localSourcePath,
     opaqueId,
@@ -1110,6 +1179,12 @@ async function updateExistingPublication(
     input.contentStore,
   );
   const packaged = await input.packaged.writeForPublication(input.opaqueId);
+  const pwa = input.pwa === true || existing.pwa;
+  if (pwa && !isDnsSafeOpaqueId(input.opaqueId)) {
+    throw new Error(
+      "This Publication's id cannot be a DNS label. Publish --new --pwa to create a PWA at a wildcard host.",
+    );
+  }
   const title = Object.hasOwn(input, "title")
     ? (input.title ?? null)
     : (packaged.derivedTitle ?? undefined);
@@ -1119,13 +1194,15 @@ async function updateExistingPublication(
     localSourcePath: input.localSourcePath,
     revisionWindowExpiresAt: input.revisionWindowExpiresAt,
     ...(title !== undefined ? { title } : {}),
+    pwa,
   });
   if (!publication) throw new Error("Publication URL cannot be updated.");
   await input.contentStore.delete(oldLocators);
-  const publicationUrl = absolutePublicationUrl(
-    input.publicBaseUrl,
-    publication.publicationUrlPath,
-  );
+  const publicationUrl = publicationShareUrl(input.publicBaseUrl, {
+    opaqueId: input.opaqueId,
+    publicationUrlPath: publication.publicationUrlPath,
+    pwa: publication.pwa,
+  });
   await input.stateStore.set({
     localSourcePath: input.localSourcePath,
     opaqueId: input.opaqueId,
@@ -1506,10 +1583,16 @@ function contentTypeForArtifactPath(artifactPath: string): string {
     case ".js":
     case ".mjs":
       return "text/javascript; charset=utf-8";
+    case ".webmanifest":
+      return "application/manifest+json; charset=utf-8";
     case ".json":
-      return "application/json; charset=utf-8";
+      return isPwaManifestArtifactPath(artifactPath)
+        ? "application/manifest+json; charset=utf-8"
+        : "application/json; charset=utf-8";
     case ".svg":
       return "image/svg+xml";
+    case ".ico":
+      return "image/x-icon";
     case ".png":
       return "image/png";
     case ".jpg":

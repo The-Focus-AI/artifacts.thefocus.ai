@@ -45,6 +45,23 @@ Expected:
 - `Cache-Control: no-store`
 - `X-Robots-Tag: noindex, nofollow`
 
+PWA publish (production custom domain; needs the Cloudflare/Vercel wildcard
+from [deploy.md](deploy.md)):
+
+```bash
+# bundle must include index.html, manifest.webmanifest or manifest.json,
+# sw.js or service-worker.js at /, and at least one icon
+ARTIFACTS_PUBLIC_BASE_URL="$BASE_URL" pnpm artifacts publish "$SMOKE_DIR" --pwa --title "PWA Smoke"
+curl -I "https://{opaque}.artifacts.thefocus.ai/"
+curl -I "https://{opaque}.artifacts.thefocus.ai/manifest.webmanifest"
+curl -I "https://{opaque}.artifacts.thefocus.ai/sw.js"
+```
+
+Expected on the wildcard host: HTTP `200`, `Cache-Control: no-cache`,
+`X-Robots-Tag: noindex, nofollow`, and `Service-Worker-Allowed: /` on `sw.js`.
+The ordinary `/a/{opaque}` URL for the same Publication still sends
+`Cache-Control: no-store`.
+
 Hotfix within 15 minutes:
 
 ```bash

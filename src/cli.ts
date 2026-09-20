@@ -25,8 +25,8 @@ import {
 import type { BrowserLoginResult } from "./login-flow.js";
 import { loginWithBrowserFlow, openDefaultBrowser } from "./login-flow.js";
 import {
-  absolutePublicationUrl,
   defaultPublicBaseUrl,
+  publicationShareUrl,
   publishArtifactFromEnvironment,
   publishArtifactSummary,
   removePublicationFromEnvironment,
@@ -124,6 +124,7 @@ export async function runCli(
             forceNew: Object.hasOwn(options, "new"),
             updatePublicationUrl: options.update,
             title: options["title"],
+            pwa: Object.hasOwn(options, "pwa"),
           })
         : dependencies.tokenStore || dependencies.metadataStore
           ? await publishArtifactFromEnvironment(sourcePath, {
@@ -134,6 +135,7 @@ export async function runCli(
               forceNew: Object.hasOwn(options, "new"),
               updatePublicationUrl: options.update,
               title: options["title"],
+              pwa: Object.hasOwn(options, "pwa"),
             })
           : await publishWithDefaultApiClient(sourcePath, token.token, {
               env,
@@ -143,6 +145,7 @@ export async function runCli(
               forceNew: Object.hasOwn(options, "new"),
               updatePublicationUrl: options.update,
               title: options["title"],
+              pwa: Object.hasOwn(options, "pwa"),
             });
       stdout.write(
         `${publishArtifactSummary(result, { verbose: options.verbose === "true" })}\n`,
@@ -609,6 +612,7 @@ async function publishWithDefaultApiClient(
     forceNew?: boolean;
     updatePublicationUrl?: string;
     title?: string;
+    pwa?: boolean;
   },
 ) {
   const stateStore = new FilePublicationStateStore(options.configDir);
@@ -631,6 +635,7 @@ async function publishWithDefaultApiClient(
     forceNew: options.forceNew,
     updatePublicationUrl,
     title: options.title,
+    pwa: options.pwa,
   });
   try {
     await stateStore.set({
@@ -693,10 +698,7 @@ function formatPublicationList(
     lines.push(
       `${publication.updatedAt.toISOString()}  ${publication.status.padEnd(
         8,
-      )} ${title}${absolutePublicationUrl(
-        options.publicBaseUrl,
-        publication.publicationUrlPath,
-      )}`,
+      )} ${title}${publicationShareUrl(options.publicBaseUrl, publication)}`,
     );
   }
   return lines.join("\n");
@@ -738,7 +740,7 @@ function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
   output.write(
     "Usage: npx @the-focus-ai/artifacts <login|logout|whoami|publish|remove|list|doc|token>\n" +
       "  npx @the-focus-ai/artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
-      '  npx @the-focus-ai/artifacts publish <file.html|directory> [--entry-page index.html] [--title "My Report"] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose] [--open]\n' +
+      '  npx @the-focus-ai/artifacts publish <file.html|directory> [--entry-page index.html] [--title "My Report"] [--pwa] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose] [--open]\n' +
       "  npx @the-focus-ai/artifacts remove <Publication URL> [--yes] [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts list [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts whoami [--base-url https://artifacts.thefocus.ai]\n" +

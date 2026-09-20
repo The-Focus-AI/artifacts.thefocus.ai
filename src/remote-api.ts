@@ -39,6 +39,7 @@ export interface RemotePublishOptions {
   forceNew?: boolean;
   updatePublicationUrl?: string;
   title?: string;
+  pwa?: boolean;
 }
 
 export class HttpArtifactApiClient implements ArtifactApiClient {
@@ -342,6 +343,7 @@ export function artifactUploadForm(
       forceNew: options.forceNew ?? false,
       updatePublicationUrl: options.updatePublicationUrl,
       title: options.title,
+      pwa: options.pwa ?? false,
     }),
   );
   for (const file of upload.files) {
@@ -385,5 +387,6 @@ function deserializePublication(
     revisionWindowExpiresAt: publication.revisionWindowExpiresAt
       ? new Date(publication.revisionWindowExpiresAt)
       : null,
+    pwa: publication.pwa ?? false,
   };
 }

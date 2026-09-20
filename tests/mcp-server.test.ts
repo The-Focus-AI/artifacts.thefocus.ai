@@ -259,6 +259,39 @@ describe("MCP Artifact publishing", () => {
     expect(message).toContain("escape");
   });
 
+  it("publishes a PWA bundle to the wildcard origin root", async () => {
+    const { call, token } = await setup();
+    const result = (await resultJson(
+      await callTool(call, token, "publish_artifact", {
+        pwa: true,
+        files: [
+          {
+            artifactPath: "index.html",
+            text: "<html><body>pwa</body></html>",
+          },
+          {
+            artifactPath: "manifest.webmanifest",
+            text: JSON.stringify({
+              name: "MCP PWA",
+              start_url: "/",
+              scope: "/",
+              icons: [{ src: "/icon-192.png", sizes: "192x192" }],
+            }),
+          },
+          {
+            artifactPath: "sw.js",
+            text: "self.addEventListener('fetch',()=>{});",
+          },
+          { artifactPath: "icon-192.png", contentBase64: "iVBORw0KGgo=" },
+        ],
+      }),
+    )) as { publicationUrl: string };
+
+    expect(result.publicationUrl).toMatch(
+      /^https:\/\/[A-Za-z0-9-]+\.artifacts\.thefocus\.ai\/$/,
+    );
+  });
+
   it("refuses html and files together", async () => {
     const { call, token } = await setup();
     const message = await resultError(

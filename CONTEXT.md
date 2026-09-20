@@ -79,3 +79,7 @@ _Avoid_: Edit, patch, diff, tracked change, proposal
 **Doc Asset**:
 A binary file hosted with a Living Doc and referenced from its Markdown (for example an image). Doc Assets belong to the Living Doc; they are not an Artifact and are not served as a Publication.
 _Avoid_: Artifact, attachment, media, Publication asset, Artifact Path
+
+**PWA Publication**:
+A Publication meant to be installed as a Progressive Web App. It is served at the origin root of its own wildcard host (`https://{opaque}.artifacts.thefocus.ai/`), not under `/a/{opaque}`. Manifest `start_url` / `scope` and the service worker register at `/` on that host. Ordinary Publications stay path-hosted on `/a/`.
+_Avoid_: path-scoped PWA, `/a/{id}/` installable app

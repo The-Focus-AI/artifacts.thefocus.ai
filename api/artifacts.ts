@@ -139,6 +139,7 @@ export async function handleArtifactsApiRequest(
           forceNew: options.forceNew,
           updatePublicationUrl: options.updatePublicationUrl,
           title: options.title,
+          pwa: options.pwa,
         }),
       );
     }
@@ -159,6 +160,7 @@ async function uploadFromFormData(form: FormData): Promise<{
     forceNew?: boolean;
     updatePublicationUrl?: string;
     title?: string;
+    pwa?: boolean;
   };
 }> {
   const metadataValue = form.get("metadata");
@@ -174,6 +176,7 @@ async function uploadFromFormData(form: FormData): Promise<{
     forceNew?: boolean;
     updatePublicationUrl?: string;
     title?: string;
+    pwa?: boolean;
   };
   const artifactPaths = form.getAll("artifactPaths").filter(isString);
   const blobs = form.getAll("files").filter(isFile);
@@ -199,6 +202,7 @@ async function uploadFromFormData(form: FormData): Promise<{
       forceNew: metadata.forceNew,
       updatePublicationUrl: metadata.updatePublicationUrl,
       title: metadata.title,
+      pwa: metadata.pwa,
     },
   };
 }
