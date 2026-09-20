@@ -6,7 +6,8 @@ description: >
   Living Docs for collaborative Markdown review. Use when asked to publish
   agent-created HTML, share a report or prototype URL, host a static bundle,
   put a deliverable online for a client, or iterate on a Markdown proposal/spec
-  with a human reviewer via comments and suggestions.
+  with a human reviewer via comments and suggestions, or host an
+  installable PWA at a wildcard origin root.
 ---
 
 # TheFocus.AI Artifacts
@@ -14,7 +15,8 @@ description: >
 Skill version: 1.4.0
 
 Artifacts turns local agent output into an unlisted Publication URL at
-`https://artifacts.thefocus.ai/a/{id}`, or a Living Doc review loop at
+`https://artifacts.thefocus.ai/a/{id}`, an installable PWA at
+`https://{id}.artifacts.thefocus.ai/`, or a Living Doc review loop at
 `/d/{id}` (view) and `/r/{id}` (review).
 
 The service is CLI-first. Prefer the npm package over raw HTTP.
@@ -44,6 +46,7 @@ If local skill text and live docs disagree, prefer the live docs and live CLI ou
 ## When to use
 
 - Publish HTML reports, prototypes, mockups, visualizations, or static directories that need a client-facing URL.
+- Publish an installable PWA at a wildcard origin root (`--pwa`). Never use `/a/{id}/` as a PWA install URL.
 - Hotfix a recently shared Publication during the Revision Window (same URL).
 - Collaborate on a Markdown proposal/spec/draft with a human via Living Docs.
 
@@ -92,6 +95,24 @@ Useful flags:
 - `--new` — force a fresh Publication during the Revision Window
 - `--update <Publication URL>` — intentionally update an older active Publication
 - `--verbose` — print excluded packaging paths
+- `--pwa` — publish an installable PWA at `https://{opaque}.artifacts.thefocus.ai/`
+
+## Publish an installable PWA
+
+PWAs must own the origin root. Path-scoped installs under `/a/{id}/` are rejected.
+
+Bundle (directory Artifact):
+
+- `index.html` (or `--entry-page`)
+- `/manifest.webmanifest` or `/manifest.json` with `start_url` and `scope` set to `/`
+- `/sw.js` or `/service-worker.js`, registered at `/`
+- at least one icon (`manifest.icons` or an icon image)
+
+```bash
+npx @the-focus-ai/artifacts publish ./pwa --pwa --title "Installable demo"
+```
+
+Return the printed `https://{opaque}.artifacts.thefocus.ai/` URL. MCP: `publish_artifact` with `pwa: true` and the same files inline. Production DNS for `*.artifacts.thefocus.ai` is documented in the repo `docs/deploy.md`.
 
 List and remove:
 
@@ -137,7 +158,7 @@ Two differences when going through MCP, because that endpoint cannot read the lo
 ## Constraints
 
 - Publication URLs are unlisted, not private. Anyone with the exact URL can view them.
-- Do not crawl, guess, infer, or enumerate `/a/` Publication URLs.
+- Do not crawl, guess, infer, or enumerate `/a/` Publication URLs or `{opaque}.artifacts.thefocus.ai` hosts.
 - There is no public Publication listing and no dashboard in v1.
 - Directory Artifacts need root `index.html` unless `--entry-page` is set.
 - Packaging excludes obvious secrets, dependency folders, caches, and hidden paths except `.well-known/`.

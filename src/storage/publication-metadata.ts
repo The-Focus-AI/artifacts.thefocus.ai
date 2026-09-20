@@ -12,6 +12,7 @@ export interface PublicationMetadata {
   localSourcePath: string | null;
   revisionWindowExpiresAt: Date | null;
   title: string | null;
+  pwa: boolean;
   createdAt: Date;
   updatedAt: Date;
   removedAt: Date | null;
@@ -26,6 +27,7 @@ export interface CreatePublicationInput {
   localSourcePath?: string | null;
   revisionWindowExpiresAt?: Date | null;
   title?: string | null;
+  pwa?: boolean;
 }
 
 export interface UpdatePublicationInput {
@@ -34,11 +36,15 @@ export interface UpdatePublicationInput {
   localSourcePath?: string | null;
   revisionWindowExpiresAt?: Date | null;
   title?: string | null;
+  pwa?: boolean;
 }
 
 export interface PublicationMetadataStore {
   create(input: CreatePublicationInput): Promise<PublicationMetadata>;
-  getByOpaqueId(opaqueId: string): Promise<PublicationMetadata | null>;
+  getByOpaqueId(
+    opaqueId: string,
+    options?: { ignoreCase?: boolean },
+  ): Promise<PublicationMetadata | null>;
   update(
     opaqueId: string,
     input: UpdatePublicationInput,
@@ -78,6 +84,7 @@ export class InMemoryPublicationMetadataStore implements PublicationMetadataStor
       localSourcePath: input.localSourcePath ?? null,
       revisionWindowExpiresAt: input.revisionWindowExpiresAt ?? null,
       title: input.title ?? null,
+      pwa: input.pwa ?? false,
       createdAt: timestamp,
       updatedAt: timestamp,
       removedAt: null,
@@ -86,7 +93,17 @@ export class InMemoryPublicationMetadataStore implements PublicationMetadataStor
     return clonePublication(row);
   }
 
-  async getByOpaqueId(opaqueId: string): Promise<PublicationMetadata | null> {
+  async getByOpaqueId(
+    opaqueId: string,
+    options?: { ignoreCase?: boolean },
+  ): Promise<PublicationMetadata | null> {
+    if (options?.ignoreCase) {
+      const needle = opaqueId.toLowerCase();
+      for (const row of this.rows.values()) {
+        if (row.opaqueId.toLowerCase() === needle) return clonePublication(row);
+      }
+      return null;
+    }
     const row = this.rows.get(opaqueId);
     return row ? clonePublication(row) : null;
   }
@@ -110,6 +127,7 @@ export class InMemoryPublicationMetadataStore implements PublicationMetadataStor
         ? (input.revisionWindowExpiresAt ?? null)
         : row.revisionWindowExpiresAt,
       title: Object.hasOwn(input, "title") ? (input.title ?? null) : row.title,
+      pwa: Object.hasOwn(input, "pwa") ? Boolean(input.pwa) : row.pwa,
       updatedAt: this.now(),
     };
     this.rows.set(opaqueId, next);
@@ -164,9 +182,10 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
           local_source_path,
           revision_window_expires_at,
           title,
+          pwa,
           created_at,
           updated_at
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         returning *
       `,
       [
@@ -179,6 +198,7 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
         input.localSourcePath ?? null,
         input.revisionWindowExpiresAt ?? null,
         input.title ?? null,
+        input.pwa ?? false,
         timestamp,
         timestamp,
       ],
@@ -186,9 +206,14 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
     return mapPublicationRow(result.rows[0]);
   }
 
-  async getByOpaqueId(opaqueId: string): Promise<PublicationMetadata | null> {
+  async getByOpaqueId(
+    opaqueId: string,
+    options?: { ignoreCase?: boolean },
+  ): Promise<PublicationMetadata | null> {
     const result = await this.sql.query<PublicationRow>(
-      "select * from publications where opaque_id = $1",
+      options?.ignoreCase
+        ? "select * from publications where lower(opaque_id) = lower($1) limit 1"
+        : "select * from publications where opaque_id = $1",
       [opaqueId],
     );
     return result.rows[0] ? mapPublicationRow(result.rows[0]) : null;
@@ -209,7 +234,8 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
             revision_window_expires_at = $4,
             local_source_path = $5,
             title = $6,
-            updated_at = $7
+            pwa = $7,
+            updated_at = $8
         where opaque_id = $1
         returning *
       `,
@@ -224,6 +250,7 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
           ? (input.localSourcePath ?? null)
           : existing.localSourcePath,
         Object.hasOwn(input, "title") ? (input.title ?? null) : existing.title,
+        Object.hasOwn(input, "pwa") ? Boolean(input.pwa) : existing.pwa,
         this.now(),
       ],
     );
@@ -284,6 +311,7 @@ interface PublicationRow {
   local_source_path: string | null;
   revision_window_expires_at: Date | string | null;
   title: string | null;
+  pwa: boolean;
   created_at: Date | string;
   updated_at: Date | string;
   removed_at: Date | string | null;
@@ -305,6 +333,7 @@ function mapPublicationRow(
       ? new Date(row.revision_window_expires_at)
       : null,
     title: row.title ?? null,
+    pwa: Boolean(row.pwa),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     removedAt: row.removed_at ? new Date(row.removed_at) : null,

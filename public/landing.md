@@ -30,6 +30,12 @@ https://artifacts.thefocus.ai/a/Ab3xY9kQ
 
 Share that URL with the user or client. Anyone with the exact URL can view it without logging in, but Publications are not listed publicly and `/a/` URLs are excluded from crawler discovery.
 
+For an installable PWA, publish a directory that includes a root manifest, a root service worker, and an icon, and pass `--pwa`. The share URL is `https://{opaque}.artifacts.thefocus.ai/` — not a path under `/a/`.
+
+```bash
+npx @the-focus-ai/artifacts publish ./pwa --pwa
+```
+
 ## Agent usage
 
 - Publish a single HTML file when the Artifact is self-contained.

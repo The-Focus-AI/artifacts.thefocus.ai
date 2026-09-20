@@ -31,8 +31,10 @@ preference.
 Required URL shape:
 
 - `https://{opaque}.artifacts.thefocus.ai/`
-- or a dedicated wildcard host such as `*.a.artifacts.thefocus.ai` if that fits
-  existing DNS better
+
+A dedicated `*.a.artifacts.thefocus.ai` host was left as a DNS fallback in the
+original lock. Implementation chose `{opaque}.artifacts.thefocus.ai` so the
+opaque Publication id is the DNS label and no extra host zone is required.
 
 On that host:
 
@@ -65,21 +67,26 @@ does not migrate or replace path-hosted Publications.
 ## Consequences
 
 - **DNS.** Cloudflare already hosts `thefocus.ai` and the apex Artifacts record
-  is DNS-only (not proxied). A wildcard for the chosen host
-  (`*.artifacts.thefocus.ai` or `*.a.artifacts.thefocus.ai`) must follow the
-  same DNS-only posture so TLS and routing stay with Vercel.
-- **SSL.** Add the matching wildcard domain on the Vercel project and use
-  Vercel's automatic certificate. This ADR does not add that domain.
-- **Routing.** Host-header routing maps the wildcard host to the same Blob serve
-  path the `/a/{opaque}` rewrite uses today. Implementation is follow-on work;
-  this record only requires that PWAs be reached as `/` on the wildcard host,
-  not as a path on the apex.
+  is DNS-only (not proxied). Add `*.artifacts` as a DNS-only A record to
+  `76.76.21.21`, matching the apex. See `docs/deploy.md`. This ADR does not
+  change production DNS.
+- **SSL.** Add `*.artifacts.thefocus.ai` on the Vercel project and use Vercel's
+  automatic wildcard certificate. That domain add is an ops step, not a code
+  change.
+- **Routing.** `middleware.ts` rewrites `{opaque}.artifacts.thefocus.ai/*` to
+  `/api/pwa` before the static filesystem, so a PWA host does not inherit apex
+  files such as `/robots.txt`. The handler serves the same Blob Artifact as
+  `/a/{opaque}` at origin root `/`. DNS hostnames are case-insensitive, so PWA
+  host lookup matches `opaque_id` case-insensitively; `/a/{opaque}` stays
+  exact.
 - **Isolation.** A per-Publication origin gives each PWA its own storage,
   cookies, permissions, and service worker. That is the point of rejecting
   path-scoped install.
 - **Ordinary Artifacts stay on `/a/`.** Path-hosted Publications, unlisted
   posture, and `Cache-Control: no-store` are unchanged. `/a/` is not a PWA
   surface.
-- **Out of scope here.** Wildcard DNS, Vercel domain/cert, and host-header
-  routing are not implemented by this ADR. Later work implements the accepted
-  shape; it must not reopen path-scoped PWAs.
+- **Publish.** `--pwa` (CLI) and `pwa: true` (MCP) return the wildcard root URL
+  and persist `publications.pwa`. Ordinary publishes still print `/a/{opaque}`.
+- **Ops still human.** Code serves a known opaque id at `/` on the wildcard
+  host. Cloudflare DNS and the Vercel wildcard domain/cert remain human-only
+  production steps documented in `docs/deploy.md`.

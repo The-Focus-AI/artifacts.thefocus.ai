@@ -37,7 +37,7 @@
     "build": "tsc -p tsconfig.json",
     "build:review-editor": "esbuild scripts/review-editor-entry.js --bundle --format=esm --minify --outfile=public/vendor/review-editor.js",
     "prepack": "pnpm run build",
-    "lint": "prettier --check package.json tsconfig.json vitest.config.ts vercel.json 'src/**/*.ts' 'api/**/*.ts' 'tests/**/*.ts' README.md 'docs/**/*.md' 'public/**/*.html' && tsc --noEmit -p tsconfig.json",
+    "lint": "prettier --check package.json tsconfig.json vitest.config.ts vercel.json middleware.ts 'src/**/*.ts' 'api/**/*.ts' 'tests/**/*.ts' README.md 'docs/**/*.md' 'public/**/*.html' && tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:storage:live": "node -e \"for (const name of ['DATABASE_URL','BLOB_READ_WRITE_TOKEN']) if (!process.env[name]) { console.error(name + ' is required for live storage tests'); process.exit(1) }\" && vitest run tests/storage-live.test.ts --reporter verbose",
     "test:storage:live:db": "node -e \"if (!process.env.DATABASE_URL) { console.error('DATABASE_URL is required for live database storage tests'); process.exit(1) }\" && vitest run tests/storage-live.test.ts --reporter verbose -t 'live Neon/Postgres'",
@@ -53,6 +53,7 @@
     "@modelcontextprotocol/sdk": "1.30.0",
     "@neondatabase/serverless": "^1.1.0",
     "@vercel/blob": "^2.4.0",
+    "@vercel/functions": "^3.9.8",
     "markdown-it": "^14.3.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
