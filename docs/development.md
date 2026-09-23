@@ -22,6 +22,19 @@ Apply `migrations/0001_publications.sql` to the Neon/Postgres database before us
 - `pwa` (whether the share URL is the wildcard origin root; see `docs/adr/0009-pwas-require-wildcard-subdomain-at-origin-root.md` and `migrations/0008_add_publication_pwa.sql`)
 - created, updated, and removed timestamps
 
+Apply `migrations/0009_create_pwa_push_subscriptions.sql` before treating
+platform Web Push subscribe as live (see
+`docs/adr/0010-platform-owns-pwa-web-push.md` and `docs/pwa-push.md`). It adds
+`pwa_push_subscriptions` (`opaque_id`, unique `endpoint`, `p256dh`, `auth`).
+HTTP 410 cleanup of gone endpoints is application-level on send.
+
+Platform push also expects these environment variable **names** (values live
+in 1Password; do not commit them):
+
+- `VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY`
+- `VAPID_SUBJECT`
+
 Apply `migrations/0005_create_living_docs.sql` for the Living Doc collaboration
 feature (see `docs/adr/0005-living-docs-agent-human-review-loop.md`). It adds:
 

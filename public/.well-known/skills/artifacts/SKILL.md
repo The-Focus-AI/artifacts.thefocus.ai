@@ -46,7 +46,7 @@ If local skill text and live docs disagree, prefer the live docs and live CLI ou
 ## When to use
 
 - Publish HTML reports, prototypes, mockups, visualizations, or static directories that need a client-facing URL.
-- Publish an installable PWA at a wildcard origin root (`--pwa`). Never use `/a/{id}/` as a PWA install URL.
+- Publish an installable PWA at a wildcard origin root (`--pwa`). Never use `/a/{id}/` as a PWA install URL. Platform Web Push is the accepted notification design (not fully live).
 - Hotfix a recently shared Publication during the Revision Window (same URL).
 - Collaborate on a Markdown proposal/spec/draft with a human via Living Docs.
 
@@ -113,6 +113,17 @@ npx @the-focus-ai/artifacts publish ./pwa --pwa --title "Installable demo"
 ```
 
 Return the printed `https://{opaque}.artifacts.thefocus.ai/` URL. MCP: `publish_artifact` with `pwa: true` and the same files inline. Production DNS for `*.artifacts.thefocus.ai` is documented in the repo `docs/deploy.md`.
+
+PWA notifications are **platform Web Push** (accepted design; subscribe/send HTTP stubs exist, live fanout is not on). Artifacts owns the VAPID keys and Neon subscription store. The PWA must request permission itself and include `push` / `notificationclick` in its own service worker — Artifacts does not inject those handlers. Do not propose BYO third-party push or `/a/{id}`-hosted push.
+
+```bash
+npx @the-focus-ai/artifacts push send \
+  --url https://{opaque}.artifacts.thefocus.ai/ \
+  --title "Hello" \
+  --body "A notification"
+```
+
+MCP `send_pwa_push` is specified and not registered yet.
 
 List and remove:
 

@@ -91,12 +91,25 @@ testing is on the production custom domain.
 Apply `migrations/0008_add_publication_pwa.sql` to Neon before relying on
 `--pwa` share URLs in production (`publications.pwa`).
 
+Platform Web Push (accepted design; see
+`docs/adr/0010-platform-owns-pwa-web-push.md`) additionally needs:
+
+1. Apply `migrations/0009_create_pwa_push_subscriptions.sql` to Neon.
+2. Generate one Artifacts VAPID key pair **out of band**. Store
+   `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` in the
+   1Password vault `Artifacts` and on the Vercel project. Never commit the
+   private key. Until those exist, subscribe routes persist when Neon is
+   applied, `GET vapid-public-key` returns 503, and send is authorized but
+   stubbed.
+
 ## Environment variables
 
 Production environment variables are configured in Vercel from fnox/1Password:
 
 - `DATABASE_URL`
 - `BLOB_READ_WRITE_TOKEN`
+- `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (platform Web
+  Push; optional until notifications are enabled)
 
 They are declared in `fnox.toml` and should never be committed as plaintext.
 

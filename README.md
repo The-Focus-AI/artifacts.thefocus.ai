@@ -118,6 +118,17 @@ npx @the-focus-ai/artifacts publish ./pwa --pwa --title "Installable demo"
 
 That prints `https://{opaque}.artifacts.thefocus.ai/`. Ordinary publishes still print `/a/{opaque}`. MCP `publish_artifact` takes `pwa: true` for the same URL shape. Production needs the Cloudflare DNS-only wildcard and Vercel `*.artifacts.thefocus.ai` domain documented in [docs/deploy.md](docs/deploy.md).
 
+PWA notifications are **platform Web Push** (accepted design: [ADR-0010](docs/adr/0010-platform-owns-pwa-web-push.md)). Artifacts owns the VAPID keys and subscription store; a PWA opts in per install from its wildcard origin. A Publisher sends with:
+
+```bash
+npx @the-focus-ai/artifacts push send \
+  --url https://{opaque}.artifacts.thefocus.ai/ \
+  --title "Hello" \
+  --body "A notification"
+```
+
+Live fanout is not on until VAPID env vars are set and `migrations/0009_create_pwa_push_subscriptions.sql` is applied. See [docs/pwa-push.md](docs/pwa-push.md). Do not treat BYO third-party push as the Artifacts product.
+
 ## Living Docs
 
 A **Living Doc** is a collaborative Markdown document an agent publishes so a human can edit it and comment on it, then the agent pulls that feedback back to continue the work. Unlike a Publication (read-only, static), a Living Doc is mutable and two-party. See [docs/adr/0005-living-docs-agent-human-review-loop.md](docs/adr/0005-living-docs-agent-human-review-loop.md) for the design and [CONTEXT.md](CONTEXT.md) for the vocabulary.
