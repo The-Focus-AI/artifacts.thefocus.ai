@@ -36,7 +36,7 @@ For an installable PWA, publish a directory that includes a root manifest, a roo
 npx @the-focus-ai/artifacts publish ./pwa --pwa
 ```
 
-PWA notifications use **platform Web Push** (accepted design, not fully live): the PWA opts in on its wildcard origin; the owning Publisher sends with `artifacts push send`. BYO third-party push is not the product.
+PWA notifications use **platform Web Push** (implementable once VAPID env and Neon migration 0009 are applied): the PWA opts in on its wildcard origin; the owning Publisher sends with `artifacts push send` or MCP `send_pwa_push`. BYO third-party push is not the product.
 
 ## Agent usage
 

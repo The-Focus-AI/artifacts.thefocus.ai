@@ -1,9 +1,10 @@
 # Platform Web Push for Artifacts PWAs
 
-Status: **accepted design** (`docs/adr/0010-platform-owns-pwa-web-push.md`).
-Subscribe/send HTTP stubs ship in this repo. Live `web-push` fanout is **not**
-on until VAPID secrets exist in 1Password/Vercel and Neon has
-`migrations/0009_create_pwa_push_subscriptions.sql` applied.
+Status: **implementable** (`docs/adr/0010-platform-owns-pwa-web-push.md`).
+Code fans out with `web-push` when VAPID env vars are present. Production
+still needs ops to apply `migrations/0009_create_pwa_push_subscriptions.sql`
+on Neon and set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`
+on Vercel. Missing VAPID fails closed (`503`); send does not pretend success.
 
 PWAs stay at `https://{opaque}.artifacts.thefocus.ai/` (ADR-0009). Artifacts
 does not inject service-worker handlers into a publisher bundle in v1. The
@@ -82,8 +83,8 @@ product, and do not host push under `/a/{opaque}`.
 
 ## How a publisher or agent sends
 
-Authenticated with a Publisher Token (or, later, MCP OAuth). Only the
-Publisher who owns the PWA Publication can send.
+Authenticated with a Publisher Token or MCP OAuth. Only the Publisher who
+owns the PWA Publication can send.
 
 ```bash
 npx @the-focus-ai/artifacts push send \
@@ -108,16 +109,14 @@ Content-Type: application/json
 }
 ```
 
-Until `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` are set and
-a `WebPushSender` is wired, send authorizes, rate-limits, and reports
-`implementation: "stubbed"` with `subscriptionCount`. It does not call a push
-service. HTTP 410 cleanup of gone endpoints is specified for the live sender.
+MCP tool: `send_pwa_push` with the same `publicationUrl`, `title`, `body`,
+and optional `url` / `data`.
 
-## MCP (deferred)
+A successful send returns `implementation: "web-push"` and counts:
+`attempted`, `succeeded`, `failed`, `removed`. Endpoints that return HTTP
+404 or 410 are deleted (`removed`). Missing VAPID env vars return `503`.
 
-Planned tool: `send_pwa_push` with `publicationUrl`, `title`, `body`, optional
-`url` / `data`. Not registered on `/mcp` in this change. Use the CLI or HTTP
-send until that lands.
+Per-Publisher-per-Publication send is rate-limited in-process (v1 guard).
 
 ## Environment
 

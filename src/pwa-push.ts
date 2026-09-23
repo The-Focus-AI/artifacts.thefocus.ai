@@ -1,3 +1,5 @@
+import { sendNotification as defaultSendNotification } from "web-push";
+
 import {
   authenticatePublisherToken,
   InvalidPublisherTokenError,
@@ -49,12 +51,11 @@ export interface SendPwaPushResult {
   title: string;
   body: string;
   url?: string;
-  subscriptionCount: number;
-  delivered: number;
-  gone: number;
+  attempted: number;
+  succeeded: number;
   failed: number;
-  implementation: "stubbed" | "web-push";
-  message?: string;
+  removed: number;
+  implementation: "web-push";
 }
 
 export interface WebPushDeliveryResult {
@@ -74,6 +75,16 @@ export interface WebPushSender {
 
 export interface PwaPushSendRateLimiter {
   consume(publisherEmail: string, opaqueId: string): boolean;
+}
+
+export interface SendPwaPushForPublisherInput {
+  publisherEmail: string;
+  payload: SendPwaPushInput;
+  metadataStore: PublicationMetadataStore;
+  subscriptionStore: PwaPushSubscriptionStore;
+  env?: NodeJS.ProcessEnv;
+  sender?: WebPushSender;
+  rateLimiter?: PwaPushSendRateLimiter;
 }
 
 export interface HandlePwaPushRequestInput {
@@ -193,6 +204,56 @@ export function createInMemoryPwaPushSendRateLimiter(
 
 const processLocalSendRateLimiter = createInMemoryPwaPushSendRateLimiter();
 
+const missingVapidMessage =
+  "Platform Web Push is not configured. Set VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, and VAPID_SUBJECT.";
+
+export function createWebPushLibrarySender(
+  send: typeof defaultSendNotification = defaultSendNotification,
+): WebPushSender {
+  return {
+    async send({ subscription, payload, vapid }) {
+      try {
+        await send(
+          {
+            endpoint: subscription.endpoint,
+            keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+          },
+          JSON.stringify({
+            title: payload.title,
+            body: payload.body,
+            url: payload.url,
+            data: payload.data,
+          }),
+          {
+            vapidDetails: {
+              subject: vapid.subject,
+              publicKey: vapid.publicKey,
+              privateKey: vapid.privateKey,
+            },
+          },
+        );
+        return { endpoint: subscription.endpoint, status: "sent" };
+      } catch (error) {
+        const statusCode = statusCodeFromUnknown(error);
+        if (statusCode === 404 || statusCode === 410) {
+          return {
+            endpoint: subscription.endpoint,
+            status: "gone",
+            statusCode,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+        return {
+          endpoint: subscription.endpoint,
+          status: "failed",
+          statusCode,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  };
+}
+
 export async function handlePwaPushRequest(
   input: HandlePwaPushRequestInput,
 ): Promise<Response> {
@@ -291,7 +352,21 @@ export async function sendPwaPush(
     token: bearerToken(input.request),
     store: input.tokenStore,
   });
-  const payload = parseSendPwaPushInput(await readJsonBody(input.request));
+  return sendPwaPushForPublisher({
+    publisherEmail,
+    payload: parseSendPwaPushInput(await readJsonBody(input.request)),
+    metadataStore: input.metadataStore,
+    subscriptionStore: input.subscriptionStore,
+    env: input.env,
+    sender: input.sender,
+    rateLimiter: input.rateLimiter,
+  });
+}
+
+export async function sendPwaPushForPublisher(
+  input: SendPwaPushForPublisherInput,
+): Promise<SendPwaPushResult> {
+  const payload = parseSendPwaPushInput(input.payload);
   const route = pwaRouteFromUrl(payload.publicationUrl);
   if (!route) {
     throw new PwaPushRequestError(
@@ -305,7 +380,7 @@ export async function sendPwaPush(
   if (!publication || publication.status !== "active" || !publication.pwa) {
     throw new PwaPushRequestError(404, "PWA Publication not found");
   }
-  if (publication.publisherEmail !== publisherEmail) {
+  if (publication.publisherEmail !== input.publisherEmail) {
     throw new PwaPushRequestError(
       403,
       "Only the Publisher who owns this PWA may send push",
@@ -313,46 +388,34 @@ export async function sendPwaPush(
   }
 
   const limiter = input.rateLimiter ?? processLocalSendRateLimiter;
-  if (!limiter.consume(publisherEmail, publication.opaqueId)) {
+  if (!limiter.consume(input.publisherEmail, publication.opaqueId)) {
     throw new PwaPushRequestError(429, "Push send rate limit exceeded");
+  }
+
+  const vapid = readVapidConfig(input.env ?? process.env);
+  if (!vapid) {
+    throw new PwaPushRequestError(503, missingVapidMessage);
   }
 
   const subscriptions = await input.subscriptionStore.listByOpaqueId(
     publication.opaqueId,
   );
-  const vapid = readVapidConfig(input.env ?? process.env);
-  if (!input.sender || !vapid) {
-    return {
-      publicationUrl: payload.publicationUrl,
-      opaqueId: publication.opaqueId,
-      title: payload.title,
-      body: payload.body,
-      url: payload.url,
-      subscriptionCount: subscriptions.length,
-      delivered: 0,
-      gone: 0,
-      failed: 0,
-      implementation: "stubbed",
-      message:
-        "Authorized send targeting is implemented. Live web-push fanout waits on VAPID_* and a WebPushSender. Gone (410) endpoints will be deleted on send.",
-    };
-  }
-
-  let delivered = 0;
-  let gone = 0;
+  const sender = input.sender ?? createWebPushLibrarySender();
+  let succeeded = 0;
+  let removed = 0;
   let failed = 0;
   for (const subscription of subscriptions) {
-    const result = await input.sender.send({
+    const result = await sender.send({
       subscription,
       payload,
       vapid,
     });
     if (result.status === "sent") {
-      delivered += 1;
+      succeeded += 1;
       continue;
     }
     if (result.status === "gone") {
-      gone += 1;
+      removed += 1;
       await input.subscriptionStore.deleteById(subscription.id);
       continue;
     }
@@ -365,10 +428,10 @@ export async function sendPwaPush(
     title: payload.title,
     body: payload.body,
     url: payload.url,
-    subscriptionCount: subscriptions.length,
-    delivered,
-    gone,
+    attempted: subscriptions.length,
+    succeeded,
     failed,
+    removed,
     implementation: "web-push",
   };
 }
@@ -468,4 +531,10 @@ function asRecord(value: unknown): Record<string, unknown> {
     return value as Record<string, unknown>;
   }
   return {};
+}
+
+function statusCodeFromUnknown(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const statusCode = (error as { statusCode?: unknown }).statusCode;
+  return typeof statusCode === "number" ? statusCode : undefined;
 }

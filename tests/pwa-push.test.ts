@@ -5,7 +5,10 @@ import {
   issuePublisherToken,
 } from "../src/auth.js";
 import { runCli } from "../src/cli.js";
-import { handlePwaPushRequest } from "../src/pwa-push.js";
+import {
+  createWebPushLibrarySender,
+  handlePwaPushRequest,
+} from "../src/pwa-push.js";
 import { pwaMiddlewareRewriteUrl } from "../src/pwa-host.js";
 import { InMemoryPublicationMetadataStore } from "../src/storage/publication-metadata.js";
 import { InMemoryPwaPushSubscriptionStore } from "../src/storage/pwa-push-subscriptions.js";
@@ -42,6 +45,11 @@ async function setup(options: { pwa?: boolean; env?: NodeJS.ProcessEnv } = {}) {
         VAPID_PUBLIC_KEY: "test-vapid-public",
         VAPID_PRIVATE_KEY: "test-vapid-private",
         VAPID_SUBJECT: "mailto:artifacts@thefocus.ai",
+      },
+      sender: {
+        async send({ subscription }) {
+          return { endpoint: subscription.endpoint, status: "sent" };
+        },
       },
     });
   return { metadataStore, subscriptionStore, tokenStore, issued, handle };
@@ -171,7 +179,7 @@ describe("PWA platform push HTTP", () => {
     );
   });
 
-  it("sends only for the owning Publisher and stubs fanout without a sender", async () => {
+  it("sends only for the owning Publisher and fans out when VAPID is set", async () => {
     const { handle, issued, tokenStore } = await setup();
     await handle(
       new Request(`${pwaHost}/api/push?action=subscribe`, {
@@ -247,9 +255,33 @@ describe("PWA platform push HTTP", () => {
     expect(sent.status).toBe(200);
     await expect(sent.json()).resolves.toMatchObject({
       opaqueId: "PwaHost1",
-      subscriptionCount: 1,
-      delivered: 0,
-      implementation: "stubbed",
+      attempted: 1,
+      succeeded: 1,
+      failed: 0,
+      removed: 0,
+      implementation: "web-push",
+    });
+  });
+
+  it("fails closed with 503 when VAPID env is missing", async () => {
+    const { handle, issued } = await setup({ env: {} });
+    const response = await handle(
+      new Request("https://artifacts.thefocus.ai/api/push?action=send", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${issued.token}`,
+        },
+        body: JSON.stringify({
+          publicationUrl: pwaUrl,
+          title: "Hello",
+          body: "World",
+        }),
+      }),
+    );
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("VAPID_"),
     });
   });
 
@@ -314,9 +346,10 @@ describe("PWA platform push HTTP", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       implementation: "web-push",
-      delivered: 1,
-      gone: 1,
-      subscriptionCount: 2,
+      attempted: 2,
+      succeeded: 1,
+      removed: 1,
+      failed: 0,
     });
     const remaining = await subscriptionStore.listByOpaqueId("PwaHost1");
     expect(remaining).toHaveLength(1);
@@ -398,11 +431,11 @@ describe("CLI push send", () => {
               title: input.title,
               body: input.body,
               url: input.url,
-              subscriptionCount: 0,
-              delivered: 0,
-              gone: 0,
+              attempted: 1,
+              succeeded: 1,
               failed: 0,
-              implementation: "stubbed",
+              removed: 0,
+              implementation: "web-push",
             };
           },
         },
@@ -418,6 +451,111 @@ describe("CLI push send", () => {
         url: "/alerts",
       },
     });
-    expect(stdout.text).toContain('"implementation": "stubbed"');
+    expect(stdout.text).toContain('"implementation": "web-push"');
+  });
+});
+
+describe("web-push library sender", () => {
+  it("maps 404 and 410 to gone and other errors to failed", async () => {
+    const sender = createWebPushLibrarySender(async (subscription) => {
+      if (subscription.endpoint.endsWith("/gone")) {
+        const error = new Error("Gone") as Error & { statusCode: number };
+        error.statusCode = 410;
+        throw error;
+      }
+      if (subscription.endpoint.endsWith("/missing")) {
+        const error = new Error("Not Found") as Error & { statusCode: number };
+        error.statusCode = 404;
+        throw error;
+      }
+      if (subscription.endpoint.endsWith("/fail")) {
+        throw new Error("upstream unavailable");
+      }
+      return { statusCode: 201, body: "", headers: {} };
+    });
+
+    await expect(
+      sender.send({
+        subscription: {
+          id: "1",
+          opaqueId: "PwaHost1",
+          endpoint: "https://push.example/endpoint/ok",
+          p256dh: "p",
+          auth: "a",
+          userAgent: null,
+          createdAt: new Date(),
+          lastSeenAt: new Date(),
+        },
+        payload: { publicationUrl: pwaUrl, title: "Hello", body: "World" },
+        vapid: {
+          publicKey: "pub",
+          privateKey: "priv",
+          subject: "mailto:artifacts@thefocus.ai",
+        },
+      }),
+    ).resolves.toMatchObject({ status: "sent" });
+
+    await expect(
+      sender.send({
+        subscription: {
+          id: "2",
+          opaqueId: "PwaHost1",
+          endpoint: "https://push.example/endpoint/gone",
+          p256dh: "p",
+          auth: "a",
+          userAgent: null,
+          createdAt: new Date(),
+          lastSeenAt: new Date(),
+        },
+        payload: { publicationUrl: pwaUrl, title: "Hello", body: "World" },
+        vapid: {
+          publicKey: "pub",
+          privateKey: "priv",
+          subject: "mailto:artifacts@thefocus.ai",
+        },
+      }),
+    ).resolves.toMatchObject({ status: "gone", statusCode: 410 });
+
+    await expect(
+      sender.send({
+        subscription: {
+          id: "3",
+          opaqueId: "PwaHost1",
+          endpoint: "https://push.example/endpoint/missing",
+          p256dh: "p",
+          auth: "a",
+          userAgent: null,
+          createdAt: new Date(),
+          lastSeenAt: new Date(),
+        },
+        payload: { publicationUrl: pwaUrl, title: "Hello", body: "World" },
+        vapid: {
+          publicKey: "pub",
+          privateKey: "priv",
+          subject: "mailto:artifacts@thefocus.ai",
+        },
+      }),
+    ).resolves.toMatchObject({ status: "gone", statusCode: 404 });
+
+    await expect(
+      sender.send({
+        subscription: {
+          id: "4",
+          opaqueId: "PwaHost1",
+          endpoint: "https://push.example/endpoint/fail",
+          p256dh: "p",
+          auth: "a",
+          userAgent: null,
+          createdAt: new Date(),
+          lastSeenAt: new Date(),
+        },
+        payload: { publicationUrl: pwaUrl, title: "Hello", body: "World" },
+        vapid: {
+          publicKey: "pub",
+          privateKey: "priv",
+          subject: "mailto:artifacts@thefocus.ai",
+        },
+      }),
+    ).resolves.toMatchObject({ status: "failed" });
   });
 });

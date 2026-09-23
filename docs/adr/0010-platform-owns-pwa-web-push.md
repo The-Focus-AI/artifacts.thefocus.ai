@@ -118,9 +118,8 @@ npx @the-focus-ai/artifacts push send \
   --body "A notification"
 ```
 
-MCP `send_pwa_push` is specified with the same arguments. Wiring that tool
-into `/mcp` is deferred so this PR does not expand `McpToolContext`; agents
-should use the CLI or HTTP send until that lands.
+MCP `send_pwa_push` uses the same arguments and the same send path as the
+CLI/HTTP surface.
 
 ### Rejected approaches
 
@@ -157,8 +156,8 @@ should use the CLI or HTTP send until that lands.
   apply the migration.
 - **VAPID secrets are ops, not code.** Create the pair out of band, store the
   values in 1Password vault `Artifacts`, and set them on Vercel. Never commit
-  them. Until they exist, `GET vapid-public-key` returns `503` and send
-  authorizes/targets but does not deliver (`implementation: "stubbed"`).
+  them. Until they exist, `GET vapid-public-key` and send both return `503`.
+  Send does not report success without VAPID.
 - **iOS.** Safari Web Push requires the PWA to be added to the Home Screen.
   That is a platform consequence, not a blocker and not an Artifacts bug.
 - **Service worker contract.** Publishers (or the agent that authors the PWA)
@@ -167,6 +166,8 @@ should use the CLI or HTTP send until that lands.
 - **Removal.** Marking a Publication removed stops new subscribes and send.
   Rows remain until a hard delete or 410 cleanup. Follow-up may drop
   subscriptions when `publications.status` becomes `removed`.
-- **Implementation status (honest).** Design is accepted. Schema + HTTP/CLI
-  stubs ship in this change. Live `web-push` fanout, shared rate limiting,
-  MCP `send_pwa_push`, and Neon apply are future work. See `docs/pwa-push.md`.
+- **Implementation status (honest).** Design is accepted and send fans out
+  with `web-push` when VAPID env vars are present. Remaining ops: apply
+  migration 0009 on Neon and set the three VAPID variables on Vercel. Rate
+  limiting is a process-local per-Publisher-per-Publication guard. See
+  `docs/pwa-push.md`.

@@ -99,8 +99,9 @@ Platform Web Push (accepted design; see
    `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` in the
    1Password vault `Artifacts` and on the Vercel project. Never commit the
    private key. Until those exist, subscribe routes persist when Neon is
-   applied, `GET vapid-public-key` returns 503, and send is authorized but
-   stubbed.
+   applied, `GET vapid-public-key` and send both return 503 (fail closed).
+   With VAPID set, send fans out through `web-push` and drops 404/410
+   endpoints.
 
 ## Environment variables
 

@@ -20,8 +20,8 @@ export default async function handler(
 
 /**
  * Platform Web Push HTTP surface. Subscribe/unsubscribe/vapid are public on
- * the PWA host. Send is Publisher-Token authenticated. Live web-push fanout
- * is TODO until VAPID_* is configured and a sender is wired.
+ * the PWA host. Send is Publisher-Token authenticated and fans out with
+ * web-push when VAPID_* is set; otherwise it fails closed with 503.
  */
 export async function handlePwaPushHttpRequest(
   request: Request,

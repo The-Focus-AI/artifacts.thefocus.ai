@@ -46,7 +46,7 @@ If local skill text and live docs disagree, prefer the live docs and live CLI ou
 ## When to use
 
 - Publish HTML reports, prototypes, mockups, visualizations, or static directories that need a client-facing URL.
-- Publish an installable PWA at a wildcard origin root (`--pwa`). Never use `/a/{id}/` as a PWA install URL. Platform Web Push is the accepted notification design (not fully live).
+- Publish an installable PWA at a wildcard origin root (`--pwa`). Never use `/a/{id}/` as a PWA install URL. Platform Web Push is implementable once VAPID env and Neon migration 0009 are applied.
 - Hotfix a recently shared Publication during the Revision Window (same URL).
 - Collaborate on a Markdown proposal/spec/draft with a human via Living Docs.
 
@@ -114,7 +114,7 @@ npx @the-focus-ai/artifacts publish ./pwa --pwa --title "Installable demo"
 
 Return the printed `https://{opaque}.artifacts.thefocus.ai/` URL. MCP: `publish_artifact` with `pwa: true` and the same files inline. Production DNS for `*.artifacts.thefocus.ai` is documented in the repo `docs/deploy.md`.
 
-PWA notifications are **platform Web Push** (accepted design; subscribe/send HTTP stubs exist, live fanout is not on). Artifacts owns the VAPID keys and Neon subscription store. The PWA must request permission itself and include `push` / `notificationclick` in its own service worker — Artifacts does not inject those handlers. Do not propose BYO third-party push or `/a/{id}`-hosted push.
+PWA notifications are **platform Web Push** (implementable; needs VAPID env + Neon migration 0009). Artifacts owns the VAPID keys and Neon subscription store and fans out with `web-push`. Missing VAPID fails closed. The PWA must request permission itself and include `push` / `notificationclick` in its own service worker — Artifacts does not inject those handlers. Do not propose BYO third-party push or `/a/{id}`-hosted push.
 
 ```bash
 npx @the-focus-ai/artifacts push send \
@@ -123,7 +123,7 @@ npx @the-focus-ai/artifacts push send \
   --body "A notification"
 ```
 
-MCP `send_pwa_push` is specified and not registered yet.
+MCP: `send_pwa_push` with `publicationUrl`, `title`, `body`, optional `url` / `data`.
 
 List and remove:
 
@@ -157,7 +157,7 @@ Rules:
 
 ## MCP instead of the CLI
 
-If an `artifacts` MCP server is connected, prefer its tools over shelling out — same operations, no subprocess: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`. Otherwise use the CLI as above.
+If an `artifacts` MCP server is connected, prefer its tools over shelling out — same operations, no subprocess: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `send_pwa_push`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`. Otherwise use the CLI as above.
 
 To connect one, add `https://artifacts.thefocus.ai/mcp` as a remote MCP server with no credential — the client runs the OAuth login itself and opens a browser for the human to approve. A pasted Publisher Token still works for clients that only support a static `Authorization: Bearer` header.
 

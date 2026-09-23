@@ -127,7 +127,7 @@ npx @the-focus-ai/artifacts push send \
   --body "A notification"
 ```
 
-Live fanout is not on until VAPID env vars are set and `migrations/0009_create_pwa_push_subscriptions.sql` is applied. See [docs/pwa-push.md](docs/pwa-push.md). Do not treat BYO third-party push as the Artifacts product.
+Send is live in code (`web-push`) once VAPID env vars are set and `migrations/0009_create_pwa_push_subscriptions.sql` is applied on Neon. Missing VAPID fails closed with 503. MCP: `send_pwa_push`. See [docs/pwa-push.md](docs/pwa-push.md). Do not treat BYO third-party push as the Artifacts product.
 
 ## Living Docs
 
@@ -202,7 +202,7 @@ claude mcp add --transport http artifacts https://artifacts.thefocus.ai/mcp \
   --header "Authorization: Bearer tfai_mcp_..."
 ```
 
-Tools: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`.
+Tools: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `send_pwa_push`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`.
 
 Two differences from the CLI, both because the endpoint cannot read your filesystem:
 
