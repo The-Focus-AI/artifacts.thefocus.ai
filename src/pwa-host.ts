@@ -134,6 +134,9 @@ export function pwaMiddlewareRewriteUrl(request: Request): URL | null {
   if (url.pathname === "/api/pwa" || url.pathname.startsWith("/api/pwa/")) {
     return null;
   }
+  if (url.pathname === "/api/push" || url.pathname.startsWith("/api/push/")) {
+    return null;
+  }
   const destination = new URL("/api/pwa", url.origin);
   destination.search = url.search;
   const artifactPath = url.pathname.replace(/^\/+/, "");

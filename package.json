@@ -55,6 +55,7 @@
     "@vercel/blob": "^2.4.0",
     "@vercel/functions": "^3.9.8",
     "markdown-it": "^14.3.0",
+    "web-push": "^3.6.7",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
@@ -69,6 +70,7 @@
     "@tiptap/starter-kit": "^2.27.2",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.9.1",
+    "@types/web-push": "^3.6.4",
     "esbuild": "^0.28.1",
     "happy-dom": "^20.10.6",
     "prettier": "^3.8.3",

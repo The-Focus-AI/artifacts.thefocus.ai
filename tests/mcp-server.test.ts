@@ -9,6 +9,7 @@ import {
   InMemoryPublicationMetadataStore,
   InMemoryPublicationStateStore,
   InMemoryPublisherTokenStore,
+  InMemoryPwaPushSubscriptionStore,
   issuePublisherToken,
   revokePublisherToken,
 } from "../src/index.js";
@@ -30,6 +31,17 @@ async function setup() {
     publicationStateStore: new InMemoryPublicationStateStore(),
     livingDocStore: new InMemoryLivingDocMetadataStore(),
     docAssetContentStore: new InMemoryDocAssetContentStore(),
+    pwaPushSubscriptionStore: new InMemoryPwaPushSubscriptionStore(),
+    pwaPushEnv: {
+      VAPID_PUBLIC_KEY: "test-vapid-public",
+      VAPID_PRIVATE_KEY: "test-vapid-private",
+      VAPID_SUBJECT: "mailto:artifacts@thefocus.ai",
+    },
+    pwaPushSender: {
+      async send({ subscription }: { subscription: { endpoint: string } }) {
+        return { endpoint: subscription.endpoint, status: "sent" as const };
+      },
+    },
   };
   const call = (request: Request) =>
     handleArtifactsMcpRequest({
@@ -360,6 +372,48 @@ describe("MCP Living Doc loop", () => {
     )) as Array<{ title: string | null }>;
 
     expect(docs.map((doc) => doc.title)).toContain("One");
+  });
+});
+
+describe("MCP PWA push", () => {
+  it("sends through send_pwa_push for a PWA the Publisher owns", async () => {
+    const { call, token, publicationMetadataStore, pwaPushSubscriptionStore } =
+      await setup();
+    await publicationMetadataStore.create({
+      opaqueId: "PwaHost1",
+      publisherEmail: "publisher@thefocus.ai",
+      activeManifestRef: "manifest-1",
+      activeArtifactLocator: "blob://pwa",
+      pwa: true,
+    });
+    await pwaPushSubscriptionStore.upsert({
+      opaqueId: "PwaHost1",
+      endpoint: "https://push.example/endpoint/1",
+      p256dh: "p256dh-key",
+      auth: "auth-key",
+    });
+
+    const result = (await resultJson(
+      await callTool(call, token, "send_pwa_push", {
+        publicationUrl: "https://PwaHost1.artifacts.thefocus.ai/",
+        title: "Hello",
+        body: "World",
+      }),
+    )) as {
+      attempted: number;
+      succeeded: number;
+      failed: number;
+      removed: number;
+      implementation: string;
+    };
+
+    expect(result).toMatchObject({
+      attempted: 1,
+      succeeded: 1,
+      failed: 0,
+      removed: 0,
+      implementation: "web-push",
+    });
   });
 });
 

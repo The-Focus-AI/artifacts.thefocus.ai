@@ -16,6 +16,7 @@ import {
   type PublishArtifactResult,
   type RemovePublicationResult,
 } from "./publication.js";
+import type { SendPwaPushInput, SendPwaPushResult } from "./pwa-push.js";
 import type { LivingDoc } from "./storage/living-doc-metadata.js";
 import type { PublicationMetadata } from "./storage/publication-metadata.js";
 
@@ -208,6 +209,48 @@ export class HttpPublisherTokenApiClient implements PublisherTokenApiClient {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(text || `Token API request failed: ${response.status}`);
+    }
+    return response;
+  }
+}
+
+export interface PushApiClient {
+  send(token: string, input: SendPwaPushInput): Promise<SendPwaPushResult>;
+}
+
+export class HttpPushApiClient implements PushApiClient {
+  constructor(
+    private readonly publicBaseUrl: string = defaultPublicBaseUrl,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {}
+
+  async send(
+    token: string,
+    input: SendPwaPushInput,
+  ): Promise<SendPwaPushResult> {
+    const response = await this.request("/api/push?action=send", token, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    return (await response.json()) as SendPwaPushResult;
+  }
+
+  private async request(
+    path: string,
+    token: string,
+    init: RequestInit = {},
+  ): Promise<Response> {
+    const response = await this.fetchImpl(new URL(path, this.publicBaseUrl), {
+      ...init,
+      headers: {
+        ...(init.headers ?? {}),
+        authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `Push API request failed: ${response.status}`);
     }
     return response;
   }
