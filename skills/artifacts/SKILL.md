@@ -12,7 +12,7 @@ description: >
 
 # TheFocus.AI Artifacts
 
-Skill version: 1.4.0
+Skill version: 1.4.1
 
 Artifacts turns local agent output into an unlisted Publication URL at
 `https://artifacts.thefocus.ai/a/{id}`, an installable PWA at
