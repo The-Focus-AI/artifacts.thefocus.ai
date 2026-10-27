@@ -26,6 +26,7 @@ import {
 import {
   createNeonPublicationMetadataStore,
   type PublicationMetadataStore,
+  publicationUrlPathFor,
 } from "./storage/publication-metadata.js";
 import {
   assertPwaBundle,
@@ -45,6 +46,11 @@ export {
   pwaPublicationUrl,
   pwaRouteFromUrl,
 } from "./pwa-host.js";
+import {
+  extractHtmlTitle,
+  injectOpenGraphTags,
+  openGraphImagePath,
+} from "./open-graph.js";
 
 export const singleFileEntryArtifactPath = "index.html";
 export const defaultPublicBaseUrl = "https://artifacts.thefocus.ai";
@@ -56,14 +62,7 @@ const maxSingleFileBytes = 25 * 1024 * 1024;
 const maxTotalArtifactBytes = 100 * 1024 * 1024;
 const maxArtifactFileCount = 1_000;
 
-export function extractHtmlTitle(input: string | Buffer): string | null {
-  const s = typeof input === "string" ? input : input.toString("utf8");
-  // Match the first <title>...</title>, case-insensitive, capture inner text
-  const match = s.match(/<title[^>]*>\s*([\s\S]*?)\s*<\/title>/i);
-  if (!match) return null;
-  const title = match[1].replace(/\s+/g, " ").trim();
-  return title.length > 0 ? title.slice(0, 200) : null;
-}
+export { extractHtmlTitle } from "./open-graph.js";
 
 export interface PublishSingleFileArtifactInput {
   filePath: string;
@@ -486,19 +485,53 @@ export async function servePublicationRequest({
     });
   }
 
+  const contentType = content.contentType ?? "text/html; charset=utf-8";
   const headers = publicationSafetyHeaders(
-    {
-      "content-type": content.contentType ?? "text/html; charset=utf-8",
-    },
+    { "content-type": contentType },
     { pwa: route.pwa, artifactPath: route.artifactPath },
   );
-  return new Response(
-    request.method === "HEAD" ? null : new Uint8Array(content.body),
-    {
-      status: 200,
-      headers,
-    },
-  );
+  const body =
+    isEntryPagePath(route.artifactPath) && isHtmlContentType(contentType)
+      ? Buffer.from(
+          injectOpenGraphTags(content.body.toString("utf8"), {
+            title: publication.title,
+            ...openGraphUrlsForRoute(request.url, route),
+          }),
+        )
+      : content.body;
+  return new Response(request.method === "HEAD" ? null : new Uint8Array(body), {
+    status: 200,
+    headers,
+  });
+}
+
+function isEntryPagePath(artifactPath: string): boolean {
+  return artifactPath === "" || artifactPath === singleFileEntryArtifactPath;
+}
+
+function isHtmlContentType(contentType: string): boolean {
+  return contentType.toLowerCase().startsWith("text/html");
+}
+
+// The share card points at the canonical Publication URL, and at the branded
+// preview image on the parent host (a PWA wildcard host would route
+// /og-image.png into the Artifact).
+function openGraphUrlsForRoute(
+  requestUrl: string,
+  route: { opaqueId: string; pwa: boolean },
+): { url: string; imageUrl: string } {
+  const parsed = new URL(requestUrl);
+  if (!route.pwa) {
+    return {
+      url: `${parsed.origin}${publicationUrlPathFor(route.opaqueId)}`,
+      imageUrl: `${parsed.origin}${openGraphImagePath}`,
+    };
+  }
+  const parentHost = parsed.host.slice(route.opaqueId.length + 1);
+  return {
+    url: `${parsed.origin}/`,
+    imageUrl: `${parsed.protocol}//${parentHost}${openGraphImagePath}`,
+  };
 }
 
 export function publicationSafetyHeaders(

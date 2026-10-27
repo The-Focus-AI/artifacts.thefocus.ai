@@ -13,6 +13,7 @@ export * from "./oauth/endpoints.js";
 export * from "./oauth/metadata.js";
 export * from "./oauth/store.js";
 export * from "./oauth/tokens.js";
+export * from "./open-graph.js";
 export * from "./publication.js";
 export * from "./remote-api.js";
 export * from "./local-config.js";
