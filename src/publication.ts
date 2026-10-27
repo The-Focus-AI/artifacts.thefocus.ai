@@ -26,7 +26,6 @@ import {
 import {
   createNeonPublicationMetadataStore,
   type PublicationMetadataStore,
-  publicationUrlPathFor,
 } from "./storage/publication-metadata.js";
 import {
   assertPwaBundle,
@@ -513,23 +512,22 @@ function isHtmlContentType(contentType: string): boolean {
   return contentType.toLowerCase().startsWith("text/html");
 }
 
-// The share card points at the canonical Publication URL, and at the branded
-// preview image on the parent host (a PWA wildcard host would route
-// /og-image.png into the Artifact).
+// og:url keeps the path the sharer pasted (/a/{opaque} and /a/{opaque}/ both
+// serve, and only the slash form resolves ./relative links), minus an
+// explicit index.html. The preview image lives on the parent host; a PWA
+// wildcard host would route /og-image.png into the Artifact.
 function openGraphUrlsForRoute(
   requestUrl: string,
   route: { opaqueId: string; pwa: boolean },
 ): { url: string; imageUrl: string } {
   const parsed = new URL(requestUrl);
+  const url = `${parsed.origin}${parsed.pathname.replace(/\/index\.html$/, "/")}`;
   if (!route.pwa) {
-    return {
-      url: `${parsed.origin}${publicationUrlPathFor(route.opaqueId)}`,
-      imageUrl: `${parsed.origin}${openGraphImagePath}`,
-    };
+    return { url, imageUrl: `${parsed.origin}${openGraphImagePath}` };
   }
   const parentHost = parsed.host.slice(route.opaqueId.length + 1);
   return {
-    url: `${parsed.origin}/`,
+    url,
     imageUrl: `${parsed.protocol}//${parentHost}${openGraphImagePath}`,
   };
 }

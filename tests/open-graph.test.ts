@@ -172,12 +172,32 @@ describe("Open Graph tags on served Publications", () => {
 
     expect(html).toContain('<meta property="og:title" content="Q2 Results" />');
     expect(html).toContain(
-      '<meta property="og:url" content="https://preview.vercel.app/a/OgTitle1" />',
+      '<meta property="og:url" content="https://preview.vercel.app/a/OgTitle1/" />',
     );
     expect(html).toContain(
       '<meta property="og:image" content="https://preview.vercel.app/og-image.png" />',
     );
     expect(html).toContain("<title>HTML title</title>");
+
+    // og:url keeps the pasted form, minus an explicit index.html.
+    const bare = await servePublicationRequest({
+      request: new Request("https://artifacts.thefocus.ai/a/OgTitle1"),
+      metadataStore,
+      contentStore,
+    });
+    await expect(bare.text()).resolves.toContain(
+      '<meta property="og:url" content="https://artifacts.thefocus.ai/a/OgTitle1" />',
+    );
+    const explicitIndex = await servePublicationRequest({
+      request: new Request(
+        "https://artifacts.thefocus.ai/a/OgTitle1/index.html",
+      ),
+      metadataStore,
+      contentStore,
+    });
+    await expect(explicitIndex.text()).resolves.toContain(
+      '<meta property="og:url" content="https://artifacts.thefocus.ai/a/OgTitle1/" />',
+    );
   });
 
   it("leaves non-HTML assets and nested pages byte-exact", async () => {
