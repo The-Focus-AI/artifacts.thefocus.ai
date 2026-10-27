@@ -87,6 +87,8 @@ cat report.html | npx @the-focus-ai/artifacts publish - --open
 
 Always return the printed Publication URL to the user.
 
+Give the Entry Page a `<title>` and a `<meta name="description" content="...">`. Slack, iMessage and similar apps show them as the link card when the Publication URL is pasted (`--title` overrides the page title). If the page already sets `og:title`, the server leaves its tags alone.
+
 Useful flags:
 
 - `--title "Report Name"` — human-readable title shown by `list`
