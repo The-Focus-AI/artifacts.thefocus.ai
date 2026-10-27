@@ -18,7 +18,7 @@ import {
 
 const card = {
   url: "https://artifacts.thefocus.ai/a/Ab3xY9kQ",
-  imageUrl: "https://artifacts.thefocus.ai/og-image.png",
+  siteName: "artifacts.thefocus.ai",
 };
 
 describe("Open Graph tag injection", () => {
@@ -43,14 +43,14 @@ describe("Open Graph tag injection", () => {
     );
     expect(injected).toContain('<meta property="og:type" content="website" />');
     expect(injected).toContain(
-      '<meta property="og:site_name" content="TheFocus.AI Artifacts" />',
+      '<meta property="og:site_name" content="artifacts.thefocus.ai" />',
     );
     expect(injected).toContain(
-      '<meta property="og:image" content="https://artifacts.thefocus.ai/og-image.png" />',
+      '<meta name="twitter:card" content="summary" />',
     );
-    expect(injected).toContain(
-      '<meta name="twitter:card" content="summary_large_image" />',
-    );
+    // No image: Publications can be served from any domain.
+    expect(injected).not.toContain("og:image");
+    expect(injected).not.toContain("twitter:image");
     expect(injected).toContain(
       '<meta name="twitter:title" content="Q2 Results" />',
     );
@@ -76,18 +76,17 @@ describe("Open Graph tag injection", () => {
     expect(injected).not.toContain('content="Page title"');
   });
 
-  it("falls back to generic copy when the page has no title or description", () => {
+  it("falls back to the host name and omits the description when the page has neither", () => {
     const injected = injectOpenGraphTags("<!doctype html><h1>Bare</h1>", {
       title: null,
       ...card,
     });
 
     expect(injected).toContain(
-      '<meta property="og:title" content="TheFocus.AI Artifact" />',
+      '<meta property="og:title" content="artifacts.thefocus.ai" />',
     );
-    expect(injected).toContain(
-      '<meta property="og:description" content="An Artifact published with TheFocus.AI Artifacts." />',
-    );
+    expect(injected).not.toContain("og:description");
+    expect(injected).not.toContain("twitter:description");
     // Without <head>, the card follows the doctype so browsers put it in <head>.
     expect(injected.startsWith("<!doctype html>\n<meta property=")).toBe(true);
     expect(injected.endsWith("<h1>Bare</h1>")).toBe(true);
@@ -111,7 +110,7 @@ describe("Open Graph tag injection", () => {
 
   it("leaves pages that already set og:title untouched", () => {
     const html =
-      '<html><head><meta property="og:title" content="Mine"><meta property="og:image" content="https://example.com/x.png"></head></html>';
+      '<html><head><meta property="og:title" content="Mine"><meta property="og:description" content="Theirs"></head></html>';
 
     expect(injectOpenGraphTags(html, { title: "Stored", ...card })).toBe(html);
   });
@@ -175,7 +174,7 @@ describe("Open Graph tags on served Publications", () => {
       '<meta property="og:url" content="https://preview.vercel.app/a/OgTitle1/" />',
     );
     expect(html).toContain(
-      '<meta property="og:image" content="https://preview.vercel.app/og-image.png" />',
+      '<meta property="og:site_name" content="preview.vercel.app" />',
     );
     expect(html).toContain("<title>HTML title</title>");
 
@@ -236,7 +235,7 @@ describe("Open Graph tags on served Publications", () => {
     await expect(serve("/page.html")).resolves.toBe("<h1>Page</h1>");
   });
 
-  it("points PWA cards at the wildcard origin and the parent host image", async () => {
+  it("uses the wildcard origin for PWA cards and the serving host as site name", async () => {
     const dir = await mkdtemp(join(tmpdir(), "artifacts-og-pwa-"));
     await writeFile(
       join(dir, "index.html"),
@@ -272,7 +271,40 @@ describe("Open Graph tags on served Publications", () => {
       '<meta property="og:url" content="https://ogpwa1.artifacts.thefocus.ai/" />',
     );
     expect(html).toContain(
-      '<meta property="og:image" content="https://artifacts.thefocus.ai/og-image.png" />',
+      '<meta property="og:site_name" content="ogpwa1.artifacts.thefocus.ai" />',
     );
+    expect(html).not.toContain("og:image");
+  });
+
+  it("names the site after whatever domain served the Publication", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "artifacts-og-domain-"));
+    const htmlPath = join(dir, "index.html");
+    await writeFile(htmlPath, "<html><head><title>Deck</title></head></html>");
+    const metadataStore = new InMemoryPublicationMetadataStore();
+    const contentStore = new InMemoryArtifactContentStore();
+    await publishSingleFileArtifact({
+      filePath: htmlPath,
+      publisherEmail: "publisher@thefocus.ai",
+      publicBaseUrl: "https://artifacts.thefocus.ai",
+      metadataStore,
+      contentStore,
+      opaqueId: "OgDomain",
+      manifestRef: "manifest-1",
+    });
+
+    const response = await servePublicationRequest({
+      request: new Request("https://upperhandai.com/a/OgDomain"),
+      metadataStore,
+      contentStore,
+    });
+    const html = await response.text();
+
+    expect(html).toContain(
+      '<meta property="og:site_name" content="upperhandai.com" />',
+    );
+    expect(html).toContain(
+      '<meta property="og:url" content="https://upperhandai.com/a/OgDomain" />',
+    );
+    expect(html).not.toContain("thefocus");
   });
 });

@@ -9,7 +9,7 @@ import {
 import { formatUnifiedDiff } from "./diff.js";
 import { rewriteDocAssetMarkdown } from "./doc-asset-rewrite.js";
 import { deriveMarkdownTitle, markdownBody } from "./front-matter.js";
-import { openGraphImagePath, openGraphMetaTags } from "./open-graph.js";
+import { openGraphMetaTags } from "./open-graph.js";
 import { createOpaqueId, defaultPublicBaseUrl } from "./publication.js";
 import {
   contentTypeForDocAssetPath,
@@ -623,9 +623,9 @@ export async function serveLivingDocViewRequest({
     });
   }
 
-  const origin = new URL(request.url).origin;
+  const requestUrl = new URL(request.url);
   return new Response(
-    request.method === "HEAD" ? null : renderViewPage(doc, origin),
+    request.method === "HEAD" ? null : renderViewPage(doc, requestUrl),
     {
       status: 200,
       headers: livingDocSafetyHeaders({
@@ -1018,14 +1018,14 @@ const viewPageMarkdownRenderer = new MarkdownIt({
   breaks: false,
 });
 
-function renderViewPage(doc: LivingDoc, origin: string): string {
+function renderViewPage(doc: LivingDoc, requestUrl: URL): string {
   const title = escapeHtml(doc.title ?? "Living Doc");
   // Link previews (Slack, iMessage) read these; the View Link is read-only.
   const openGraph = openGraphMetaTags({
     title: doc.title ?? "Living Doc",
-    description: "A Living Doc published with TheFocus.AI Artifacts.",
-    url: `${origin}/d/${doc.opaqueId}`,
-    imageUrl: `${origin}${openGraphImagePath}`,
+    description: null,
+    url: `${requestUrl.origin}/d/${doc.opaqueId}`,
+    siteName: requestUrl.hostname,
   });
   // Render the body only so YAML fences are not turned into <hr>; the stored
   // Living Doc Markdown always keeps front matter intact.

@@ -45,11 +45,7 @@ export {
   pwaPublicationUrl,
   pwaRouteFromUrl,
 } from "./pwa-host.js";
-import {
-  extractHtmlTitle,
-  injectOpenGraphTags,
-  openGraphImagePath,
-} from "./open-graph.js";
+import { extractHtmlTitle, injectOpenGraphTags } from "./open-graph.js";
 
 export const singleFileEntryArtifactPath = "index.html";
 export const defaultPublicBaseUrl = "https://artifacts.thefocus.ai";
@@ -494,7 +490,7 @@ export async function servePublicationRequest({
       ? Buffer.from(
           injectOpenGraphTags(content.body.toString("utf8"), {
             title: publication.title,
-            ...openGraphUrlsForRoute(request.url, route),
+            ...openGraphCardForRequest(request.url),
           }),
         )
       : content.body;
@@ -514,21 +510,16 @@ function isHtmlContentType(contentType: string): boolean {
 
 // og:url keeps the path the sharer pasted (/a/{opaque} and /a/{opaque}/ both
 // serve, and only the slash form resolves ./relative links), minus an
-// explicit index.html. The preview image lives on the parent host; a PWA
-// wildcard host would route /og-image.png into the Artifact.
-function openGraphUrlsForRoute(
-  requestUrl: string,
-  route: { opaqueId: string; pwa: boolean },
-): { url: string; imageUrl: string } {
+// explicit index.html. The site name is the request host so the card is
+// right on any domain that serves Publications.
+function openGraphCardForRequest(requestUrl: string): {
+  url: string;
+  siteName: string;
+} {
   const parsed = new URL(requestUrl);
-  const url = `${parsed.origin}${parsed.pathname.replace(/\/index\.html$/, "/")}`;
-  if (!route.pwa) {
-    return { url, imageUrl: `${parsed.origin}${openGraphImagePath}` };
-  }
-  const parentHost = parsed.host.slice(route.opaqueId.length + 1);
   return {
-    url,
-    imageUrl: `${parsed.protocol}//${parentHost}${openGraphImagePath}`,
+    url: `${parsed.origin}${parsed.pathname.replace(/\/index\.html$/, "/")}`,
+    siteName: parsed.hostname,
   };
 }
 

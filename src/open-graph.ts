@@ -1,37 +1,29 @@
 // Link previews (Slack, iMessage, Teams, X) read Open Graph meta tags from
 // the Entry Page. Agent-created HTML rarely has them, so the server adds a
-// card at serve time. Tags the author already set always win.
-
-export const openGraphSiteName = "TheFocus.AI Artifacts";
-export const openGraphImagePath = "/og-image.png";
-export const openGraphImageWidth = 2400;
-export const openGraphImageHeight = 1260;
-export const defaultOpenGraphTitle = "TheFocus.AI Artifact";
-export const defaultOpenGraphDescription =
-  "An Artifact published with TheFocus.AI Artifacts.";
+// text card at serve time. Tags the author already set always win. The card
+// carries no image or brand copy: Publications can be served from any
+// domain, so the site name is the host the request came in on.
 
 export interface OpenGraphCard {
   title: string;
-  description: string;
+  description: string | null;
   url: string;
-  imageUrl: string;
+  siteName: string;
 }
 
 export function openGraphMetaTags(card: OpenGraphCard): string {
   const tags: Array<[string, string, string]> = [
     ["property", "og:title", card.title],
-    ["property", "og:description", card.description],
     ["property", "og:url", card.url],
     ["property", "og:type", "website"],
-    ["property", "og:site_name", openGraphSiteName],
-    ["property", "og:image", card.imageUrl],
-    ["property", "og:image:width", String(openGraphImageWidth)],
-    ["property", "og:image:height", String(openGraphImageHeight)],
-    ["name", "twitter:card", "summary_large_image"],
+    ["property", "og:site_name", card.siteName],
+    ["name", "twitter:card", "summary"],
     ["name", "twitter:title", card.title],
-    ["name", "twitter:description", card.description],
-    ["name", "twitter:image", card.imageUrl],
   ];
+  if (card.description) {
+    tags.splice(1, 0, ["property", "og:description", card.description]);
+    tags.push(["name", "twitter:description", card.description]);
+  }
   return tags
     .map(
       ([attribute, key, value]) =>
@@ -46,17 +38,14 @@ export function hasOpenGraphTitle(html: string): boolean {
 
 export function injectOpenGraphTags(
   html: string,
-  card: Omit<OpenGraphCard, "title" | "description"> & {
-    title: string | null;
-  },
+  card: { title: string | null; url: string; siteName: string },
 ): string {
   if (hasOpenGraphTitle(html)) return html;
   const block = openGraphMetaTags({
-    title: card.title ?? extractHtmlTitle(html) ?? defaultOpenGraphTitle,
-    description:
-      extractHtmlMetaDescription(html) ?? defaultOpenGraphDescription,
+    title: card.title ?? extractHtmlTitle(html) ?? card.siteName,
+    description: extractHtmlMetaDescription(html),
     url: card.url,
-    imageUrl: card.imageUrl,
+    siteName: card.siteName,
   });
 
   const headClose = html.search(/<\/head\s*>/i);
