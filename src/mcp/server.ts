@@ -13,6 +13,8 @@ import type { ArtifactContentStore } from "../storage/artifact-content.js";
 import type { DocAssetContentStore } from "../storage/doc-asset-content.js";
 import type { LivingDocMetadataStore } from "../storage/living-doc-metadata.js";
 import type { PublicationMetadataStore } from "../storage/publication-metadata.js";
+import type { PwaPushSubscriptionStore } from "../storage/pwa-push-subscriptions.js";
+import type { WebPushSender } from "../pwa-push.js";
 import { mcpResourceIdentifier } from "../oauth/metadata.js";
 import type { OAuthStore } from "../oauth/store.js";
 import { isOAuthAccessToken, verifyOAuthAccessToken } from "../oauth/tokens.js";
@@ -29,6 +31,9 @@ export interface ArtifactsMcpDependencies {
   publicationStateStore: PublicationStateStore;
   livingDocStore: LivingDocMetadataStore;
   docAssetContentStore: DocAssetContentStore;
+  pwaPushSubscriptionStore: PwaPushSubscriptionStore;
+  pwaPushEnv?: NodeJS.ProcessEnv;
+  pwaPushSender?: WebPushSender;
   /** Present once the OAuth login flow is deployed; absent means token-only. */
   oauthStore?: OAuthStore;
   publicBaseUrl?: string;
@@ -43,6 +48,7 @@ export function buildArtifactsMcpServer(context: McpToolContext): McpServer {
         "Publish agent-generated HTML as unlisted Artifacts, and Markdown as Living Docs a human can edit and comment on.",
         "publish_artifact returns a Publication URL to hand to a person; keep that URL if you may need update_artifact later.",
         "The Living Doc loop is publish_doc, then pull_doc to read Reviewer feedback, then respond_doc to propose changes. Repeat.",
+        "send_pwa_push fans out a platform Web Push notification to installs of a PWA you own.",
       ].join(" "),
     },
   );
@@ -122,6 +128,9 @@ export async function handleArtifactsMcpRequest(
     publicationStateStore: input.publicationStateStore,
     livingDocStore: input.livingDocStore,
     docAssetContentStore: input.docAssetContentStore,
+    pwaPushSubscriptionStore: input.pwaPushSubscriptionStore,
+    pwaPushEnv: input.pwaPushEnv,
+    pwaPushSender: input.pwaPushSender,
   };
 
   const transport = new WebStandardStreamableHTTPServerTransport({

@@ -35,3 +35,21 @@ provider = "op"
 value = "CLERK_SIGN_IN_DOMAIN"
 if_missing = "ignore"
 description = "Clerk sign-in domain from dashboard → Domains (e.g. capital-panther-42.clerk.accounts.dev)"
+
+[secrets.VAPID_PUBLIC_KEY]
+provider = "op"
+value = "VAPID_PUBLIC_KEY"
+if_missing = "ignore"
+description = "Platform Web Push VAPID public key — served to PWA clients. Never commit the private key."
+
+[secrets.VAPID_PRIVATE_KEY]
+provider = "op"
+value = "VAPID_PRIVATE_KEY"
+if_missing = "ignore"
+description = "Platform Web Push VAPID private key — server-only. Generate out of band; never commit."
+
+[secrets.VAPID_SUBJECT]
+provider = "op"
+value = "VAPID_SUBJECT"
+if_missing = "ignore"
+description = "Platform Web Push VAPID subject (mailto: or https contact URL)"

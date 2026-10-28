@@ -45,9 +45,11 @@ import {
   HttpArtifactApiClient,
   HttpLivingDocApiClient,
   HttpPublisherTokenApiClient,
+  HttpPushApiClient,
   type ArtifactApiClient,
   type LivingDocApiClient,
   type PublisherTokenApiClient,
+  type PushApiClient,
 } from "./remote-api.js";
 import {
   createNeonPublicationMetadataStore,
@@ -63,6 +65,7 @@ export interface CliDependencies {
   apiClient?: ArtifactApiClient;
   docApiClient?: LivingDocApiClient;
   tokenApiClient?: PublisherTokenApiClient;
+  pushApiClient?: PushApiClient;
   configDir?: string;
   openBrowser?: (url: string) => Promise<void>;
   stdin?: NodeJS.ReadStream;
@@ -306,6 +309,16 @@ export async function runCli(
       });
     }
 
+    if (command === "push") {
+      return await runPushCommand(firstArg, {
+        env,
+        configDir,
+        options,
+        stdout,
+        pushApiClient: dependencies.pushApiClient,
+      });
+    }
+
     printUsage(stderr);
     return 1;
   } catch (error) {
@@ -546,6 +559,49 @@ async function runTokenCommand(
   );
 }
 
+async function runPushCommand(
+  subcommand: string | undefined,
+  context: {
+    env: NodeJS.ProcessEnv;
+    configDir: string;
+    options: Record<string, string | undefined>;
+    stdout: Pick<NodeJS.WriteStream, "write">;
+    pushApiClient?: PushApiClient;
+  },
+): Promise<number> {
+  if (subcommand !== "send") {
+    throw new Error(
+      'Usage: artifacts push send --url https://{opaque}.artifacts.thefocus.ai/ --title "Hello" --body "A notification"',
+    );
+  }
+  const publicationUrl = context.options.url;
+  const title = context.options.title;
+  const body = context.options.body;
+  if (!publicationUrl || !title || !body) {
+    throw new Error("push send requires --url, --title, and --body");
+  }
+  const token = await resolvePublisherToken({
+    env: context.env,
+    configDir: context.configDir,
+  });
+  if (!token.token) throw new Error("A valid Publisher Token is required");
+  const client =
+    context.pushApiClient ??
+    new HttpPushApiClient(
+      context.options["base-url"] ??
+        context.env.ARTIFACTS_PUBLIC_BASE_URL ??
+        defaultPublicBaseUrl,
+    );
+  const result = await client.send(token.token, {
+    publicationUrl,
+    title,
+    body,
+    url: context.options["click-url"],
+  });
+  context.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  return 0;
+}
+
 function formatTokenList(
   records: Array<{
     tokenId: string;
@@ -738,7 +794,7 @@ function readStdin(stream: NodeJS.ReadableStream): Promise<string> {
 
 function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
   output.write(
-    "Usage: npx @the-focus-ai/artifacts <login|logout|whoami|publish|remove|list|doc|token>\n" +
+    "Usage: npx @the-focus-ai/artifacts <login|logout|whoami|publish|remove|list|doc|token|push>\n" +
       "  npx @the-focus-ai/artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
       '  npx @the-focus-ai/artifacts publish <file.html|directory> [--entry-page index.html] [--title "My Report"] [--pwa] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose] [--open]\n' +
       "  npx @the-focus-ai/artifacts remove <Publication URL> [--yes] [--base-url https://artifacts.thefocus.ai]\n" +
@@ -752,7 +808,8 @@ function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
       "  npx @the-focus-ai/artifacts doc remove <Living Doc View URL or id> [--yes] [--base-url ...]\n" +
       '  npx @the-focus-ai/artifacts token create [--for mcp] [--label "claude desktop"] [--base-url ...]\n' +
       "  npx @the-focus-ai/artifacts token list [--base-url ...]\n" +
-      "  npx @the-focus-ai/artifacts token revoke <Token Id> [--yes] [--base-url ...]\n",
+      "  npx @the-focus-ai/artifacts token revoke <Token Id> [--yes] [--base-url ...]\n" +
+      '  npx @the-focus-ai/artifacts push send --url https://{opaque}.artifacts.thefocus.ai/ --title "Hello" --body "A notification" [--base-url ...]\n',
   );
 }
 

@@ -16,6 +16,7 @@ import {
   InMemoryPublicationMetadataStore,
   InMemoryPublicationStateStore,
   InMemoryPublisherTokenStore,
+  InMemoryPwaPushSubscriptionStore,
   mcpResourceIdentifier,
   protectedResourceMetadata,
   readAuthorizeParams,
@@ -492,6 +493,7 @@ describe("/mcp with an OAuth access token", () => {
       publicationStateStore: new InMemoryPublicationStateStore(),
       livingDocStore: new InMemoryLivingDocMetadataStore(),
       docAssetContentStore: new InMemoryDocAssetContentStore(),
+      pwaPushSubscriptionStore: new InMemoryPwaPushSubscriptionStore(),
       oauthStore,
     };
     const call = (request: Request) =>

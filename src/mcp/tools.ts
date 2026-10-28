@@ -17,6 +17,7 @@ import {
   removePublication,
   type InlineArtifactFile,
 } from "../publication.js";
+import { sendPwaPushForPublisher } from "../pwa-push.js";
 import type { McpToolSpec } from "./spec.js";
 
 const inlineFileSchema = z.object({
@@ -266,6 +267,51 @@ export const artifactsMcpTools: McpToolSpec[] = [
         publicationUrl: publicationShareUrl(context.publicBaseUrl, publication),
         pwa: publication.pwa,
       }));
+    },
+  },
+  {
+    name: "send_pwa_push",
+    title: "Send a PWA push notification",
+    kind: "mutation",
+    description: [
+      "Send a platform Web Push notification to every stored subscription for a PWA you own.",
+      "Pass the wildcard Publication URL (https://{opaque}.artifacts.thefocus.ai/), never a path under /a/{id}/.",
+      "Requires VAPID_* on the server. Push is opt-in per install; this does not subscribe anyone.",
+    ].join(" "),
+    inputSchema: {
+      publicationUrl: z
+        .string()
+        .describe(
+          "PWA Publication URL at https://{opaque}.artifacts.thefocus.ai/.",
+        ),
+      title: z.string().describe("Notification title."),
+      body: z.string().describe("Notification body."),
+      url: z
+        .string()
+        .optional()
+        .describe(
+          "Optional URL opened on notification click, relative to the PWA origin.",
+        ),
+      data: z
+        .unknown()
+        .optional()
+        .describe("Optional JSON data included in the push payload."),
+    },
+    async run(args, context) {
+      return sendPwaPushForPublisher({
+        publisherEmail: context.publisherEmail,
+        payload: {
+          publicationUrl: args.publicationUrl as string,
+          title: args.title as string,
+          body: args.body as string,
+          url: args.url as string | undefined,
+          data: args.data,
+        },
+        metadataStore: context.publicationMetadataStore,
+        subscriptionStore: context.pwaPushSubscriptionStore,
+        env: context.pwaPushEnv ?? process.env,
+        sender: context.pwaPushSender,
+      });
     },
   },
   {
