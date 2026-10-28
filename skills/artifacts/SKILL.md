@@ -12,7 +12,7 @@ description: >
 
 # TheFocus.AI Artifacts
 
-Skill version: 1.4.0
+Skill version: 1.4.1
 
 Artifacts turns local agent output into an unlisted Publication URL at
 `https://artifacts.thefocus.ai/a/{id}`, an installable PWA at
@@ -86,6 +86,8 @@ cat report.html | npx @the-focus-ai/artifacts publish - --open
 ```
 
 Always return the printed Publication URL to the user.
+
+Give the Entry Page a `<title>` and a `<meta name="description" content="...">`. Slack, iMessage and similar apps show them as the link card when the Publication URL is pasted (`--title` overrides the page title). If the page already sets `og:title`, the server leaves its tags alone.
 
 Useful flags:
 

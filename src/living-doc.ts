@@ -9,6 +9,7 @@ import {
 import { formatUnifiedDiff } from "./diff.js";
 import { rewriteDocAssetMarkdown } from "./doc-asset-rewrite.js";
 import { deriveMarkdownTitle, markdownBody } from "./front-matter.js";
+import { openGraphMetaTags } from "./open-graph.js";
 import { createOpaqueId, defaultPublicBaseUrl } from "./publication.js";
 import {
   contentTypeForDocAssetPath,
@@ -622,12 +623,16 @@ export async function serveLivingDocViewRequest({
     });
   }
 
-  return new Response(request.method === "HEAD" ? null : renderViewPage(doc), {
-    status: 200,
-    headers: livingDocSafetyHeaders({
-      "content-type": "text/html; charset=utf-8",
-    }),
-  });
+  const requestUrl = new URL(request.url);
+  return new Response(
+    request.method === "HEAD" ? null : renderViewPage(doc, requestUrl),
+    {
+      status: 200,
+      headers: livingDocSafetyHeaders({
+        "content-type": "text/html; charset=utf-8",
+      }),
+    },
+  );
 }
 
 export interface HandleAgentApiInput {
@@ -1013,8 +1018,15 @@ const viewPageMarkdownRenderer = new MarkdownIt({
   breaks: false,
 });
 
-function renderViewPage(doc: LivingDoc): string {
+function renderViewPage(doc: LivingDoc, requestUrl: URL): string {
   const title = escapeHtml(doc.title ?? "Living Doc");
+  // Link previews (Slack, iMessage) read these; the View Link is read-only.
+  const openGraph = openGraphMetaTags({
+    title: doc.title ?? "Living Doc",
+    description: null,
+    url: `${requestUrl.origin}/d/${doc.opaqueId}`,
+    siteName: requestUrl.hostname,
+  });
   // Render the body only so YAML fences are not turned into <hr>; the stored
   // Living Doc Markdown always keeps front matter intact.
   const content = viewPageMarkdownRenderer.render(
@@ -1027,6 +1039,7 @@ function renderViewPage(doc: LivingDoc): string {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex, nofollow" />
 <title>${title}</title>
+${openGraph}
 <style>
   :root { color-scheme: light dark; }
   body { margin: 0; font: 16px/1.6 system-ui, sans-serif; }

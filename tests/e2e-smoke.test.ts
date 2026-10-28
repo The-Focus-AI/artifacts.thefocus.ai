@@ -68,9 +68,7 @@ describe("v1 end-to-end smoke flow", () => {
     expect(firstView.status).toBe(200);
     expect(firstView.headers.get("cache-control")).toBe("no-store");
     expect(firstView.headers.get("x-robots-tag")).toBe("noindex, nofollow");
-    await expect(firstView.text()).resolves.toBe(
-      "<!doctype html><h1>Smoke v1</h1>",
-    );
+    await expect(firstView.text()).resolves.toContain("<h1>Smoke v1</h1>");
 
     await writeFile(
       join(dir, "index.html"),
@@ -99,9 +97,7 @@ describe("v1 end-to-end smoke flow", () => {
       contentStore,
     });
     expect(hotfixView.status).toBe(200);
-    await expect(hotfixView.text()).resolves.toBe(
-      "<!doctype html><h1>Smoke hotfix</h1>",
-    );
+    await expect(hotfixView.text()).resolves.toContain("<h1>Smoke hotfix</h1>");
 
     await expect(
       metadataStore.listByPublisherEmail(login.publisherEmail),

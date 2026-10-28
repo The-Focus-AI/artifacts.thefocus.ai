@@ -55,8 +55,11 @@ describe("single-file publish/view path", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
     expect(response.headers.get("content-type")).toContain("text/html");
-    await expect(response.text()).resolves.toBe(
-      "<!doctype html><h1>Hello client</h1>",
+    const html = await response.text();
+    expect(html).toContain("<h1>Hello client</h1>");
+    // The Entry Page carries a link-preview card for Slack and message apps.
+    expect(html).toContain(
+      '<meta property="og:url" content="https://artifacts.thefocus.ai/a/Ab3xY9kQ" />',
     );
   });
 
@@ -157,7 +160,7 @@ describe("directory publish/view path", () => {
     expect(home.status).toBe(200);
     expect(home.headers.get("content-type")).toContain("text/html");
     expect(home.headers.has("content-security-policy")).toBe(false);
-    await expect(home.text()).resolves.toBe("<!doctype html><h1>Home</h1>");
+    await expect(home.text()).resolves.toContain("<h1>Home</h1>");
 
     const asset = await servePublicationRequest({
       request: new Request(
@@ -176,6 +179,7 @@ describe("directory publish/view path", () => {
       contentStore,
     });
     expect(nestedIndex.status).toBe(200);
+    // Only the Entry Page gets the link-preview card; nested pages are byte-exact.
     await expect(nestedIndex.text()).resolves.toBe("<h1>About</h1>");
   });
 
@@ -213,7 +217,7 @@ describe("directory publish/view path", () => {
       contentStore,
     });
     expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("<h1>Demo</h1>");
+    await expect(response.text()).resolves.toContain("<h1>Demo</h1>");
   });
 
   it("returns 404 for missing paths and never exposes directory listings", async () => {

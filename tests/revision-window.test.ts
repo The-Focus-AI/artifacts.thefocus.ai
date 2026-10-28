@@ -77,7 +77,7 @@ describe("Revision Window publishing decisions", () => {
       contentStore,
     });
     expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("<h1>hotfix</h1>");
+    await expect(response.text()).resolves.toContain("<h1>hotfix</h1>");
   });
 
   it("creates a fresh Publication after expiry and when --new is requested", async () => {
@@ -180,7 +180,9 @@ describe("Revision Window publishing decisions", () => {
       metadataStore,
       contentStore,
     });
-    await expect(response.text()).resolves.toBe("<h1>explicit update</h1>");
+    await expect(response.text()).resolves.toContain(
+      "<h1>explicit update</h1>",
+    );
   });
 
   it("falls back to a new Publication when local state points to a removed Publication", async () => {

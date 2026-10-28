@@ -66,6 +66,8 @@ fnox exec -- pnpm artifacts publish ./artifact.html
 
 Pass `--title "Report Name"` to set a human-readable title for the Publication (visible via `artifacts list`).
 
+Publication Entry Pages are served with Open Graph and Twitter card meta tags (title, description, URL, and site name), so a Publication URL expands with a text card when it is pasted into Slack, iMessage, or similar apps. The title comes from `--title` or the page's `<title>`, the description from the page's `<meta name="description">`, and the site name from the host that served the request. There is no preview image, so the card is correct on any domain. If the Artifact already sets `og:title`, the server leaves its tags alone.
+
 Publisher Tokens are issued only to verified emails ending exactly in `@thefocus.ai`, are stored hashed server-side, and can be stored locally with `npx @the-focus-ai/artifacts login --token <token>` or supplied non-interactively with `THEFOCUS_ARTIFACTS_TOKEN` (which overrides local config). Local CLI token state is stored under `~/.config/thefocus-artifacts/` with restricted file permissions where supported; `npx @the-focus-ai/artifacts whoami` validates the active token through the hosted Artifacts API, `npx @the-focus-ai/artifacts list` shows the current Publisher's active and removed Publications (with titles), and `npx @the-focus-ai/artifacts logout` removes local token state.
 
 Normal npm CLI usage only needs a Publisher Token. Infrastructure secrets such as `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` are required only for local development of the server/Vercel functions or deployed server-side API routes; publishers and agents running `npx @the-focus-ai/artifacts ...` should not set those secrets locally.

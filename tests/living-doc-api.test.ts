@@ -117,6 +117,10 @@ describe("Living Doc agent API", () => {
     const page = await html.text();
     // Markdown is rendered server-side; the page needs no CDN scripts.
     expect(page).toContain("<h1>Visible</h1>");
+    expect(page).toContain('<meta property="og:title" content="Visible" />');
+    expect(page).toContain(
+      `<meta property="og:url" content="https://x/d/${published.opaqueId}" />`,
+    );
     expect(page).not.toContain("esm.sh");
 
     const json = (await (
