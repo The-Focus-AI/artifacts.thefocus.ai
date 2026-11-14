@@ -1,10 +1,12 @@
+# Vault: "Focus - Artifacts" in the organization 1Password account, thefocusai.1password.com,
+# referenced by ID. Granted to the `internal` group. Development and preview values only.
 # Source of truth: 1Password vault "Artifacts".
 # Each [secrets.X] block maps env var X to a 1Password item in that vault.
 # Convention: 1Password item title = env var name (= the `value` field below).
 
 [providers.op]
 type = "1password"
-vault = "Artifacts"
+vault = "lubz73mphce5snifu2j26rfkpu"
 
 [secrets.DATABASE_URL]
 provider = "op"

@@ -7,7 +7,7 @@ The production-shaped storage foundation expects these environment variables whe
 - `DATABASE_URL` — Neon/Postgres connection string used by the Publication metadata store.
 - `BLOB_READ_WRITE_TOKEN` — Vercel Blob read/write token used by the Artifact content store.
 
-Do not commit secret values. Runtime secrets live in the dedicated 1Password vault `Artifacts` and are resolved by fnox. The only value that belongs in local `.fnox/env` is the bootstrap `OP_SERVICE_ACCOUNT_TOKEN`, pulled from the `thefocus` vault by `mise run setup`.
+Do not commit secret values. Runtime secrets live in the dedicated 1Password vault `Focus - Artifacts` in the organization account and are resolved by fnox. The only value that belongs in local `.fnox/env` is the bootstrap `OP_SERVICE_ACCOUNT_TOKEN`, pulled from the `thefocus` vault by `mise run setup`.
 
 ## Metadata schema
 
