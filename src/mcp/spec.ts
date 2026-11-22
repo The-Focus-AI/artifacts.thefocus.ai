@@ -7,6 +7,8 @@ import type { DocAssetContentStore } from "../storage/doc-asset-content.js";
 import type { LivingDocMetadataStore } from "../storage/living-doc-metadata.js";
 import type { ArtifactContentStore } from "../storage/artifact-content.js";
 import type { PublicationMetadataStore } from "../storage/publication-metadata.js";
+import type { PwaPushSubscriptionStore } from "../storage/pwa-push-subscriptions.js";
+import type { WebPushSender } from "../pwa-push.js";
 
 /**
  * Everything a tool needs to do its work, assembled once per request by the
@@ -27,6 +29,9 @@ export interface McpToolContext {
   publicationStateStore: PublicationStateStore;
   livingDocStore: LivingDocMetadataStore;
   docAssetContentStore: DocAssetContentStore;
+  pwaPushSubscriptionStore: PwaPushSubscriptionStore;
+  pwaPushEnv?: NodeJS.ProcessEnv;
+  pwaPushSender?: WebPushSender;
 }
 
 /**

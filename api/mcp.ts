@@ -13,6 +13,7 @@ import { VercelBlobArtifactContentStore } from "../src/storage/artifact-content.
 import { createVercelBlobDocAssetContentStore } from "../src/storage/doc-asset-content.js";
 import { createNeonLivingDocMetadataStore } from "../src/storage/living-doc-metadata.js";
 import { createNeonPublicationMetadataStore } from "../src/storage/publication-metadata.js";
+import { createNeonPwaPushSubscriptionStore } from "../src/storage/pwa-push-subscriptions.js";
 
 export default async function handler(
   request: IncomingMessage,
@@ -29,6 +30,8 @@ export default async function handler(
     publicationStateStore: new InMemoryPublicationStateStore(),
     livingDocStore: createNeonLivingDocMetadataStore(),
     docAssetContentStore: createVercelBlobDocAssetContentStore(),
+    pwaPushSubscriptionStore: createNeonPwaPushSubscriptionStore(),
+    pwaPushEnv: process.env,
     oauthStore: createNeonOAuthStore(),
     publicBaseUrl:
       process.env.ARTIFACTS_PUBLIC_BASE_URL ?? defaultPublicBaseUrl,

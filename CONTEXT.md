@@ -83,3 +83,7 @@ _Avoid_: Artifact, attachment, media, Publication asset, Artifact Path
 **PWA Publication**:
 A Publication meant to be installed as a Progressive Web App. It is served at the origin root of its own wildcard host (`https://{opaque}.artifacts.thefocus.ai/`), not under `/a/{opaque}`. Manifest `start_url` / `scope` and the service worker register at `/` on that host. Ordinary Publications stay path-hosted on `/a/`.
 _Avoid_: path-scoped PWA, `/a/{id}/` installable app
+
+**Platform Push**:
+The Artifacts-owned Web Push product for installable PWAs. Artifacts holds one VAPID key pair, stores subscriptions in Neon keyed by `opaque_id`, exposes public subscribe endpoints on the PWA origin, and sends only with Publisher Token / OAuth for the owning Publisher. Push is opt-in per install. See `docs/adr/0010-platform-owns-pwa-web-push.md`.
+_Avoid_: BYO push, per-artifact VAPID, third-party push SDK as the product, path-hosted `/a/{id}` push
