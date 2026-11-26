@@ -84,12 +84,12 @@ npx @the-focus-ai/artifacts password https://artifacts.thefocus.ai/a/Ab3xY9kQ --
 npx @the-focus-ai/artifacts password https://artifacts.thefocus.ai/a/Ab3xY9kQ --clear
 ```
 
-| Flag                      | Command               | What it does                                                                                                     |
-| ------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `--password <password>`   | `publish`             | Sets or replaces the password, 4 to 200 characters. Omit it on a later publish to keep the current password.     |
-| `--unlock-for <duration>` | `publish`, `password` | Limits how long a viewer stays unlocked: `30m`, `12h`, `7d`. `never` removes the limit. The default is no limit. |
-| `--set <password>`        | `password`            | Sets or replaces the password on an existing Publication.                                                        |
-| `--clear`                 | `password`            | Removes the password. The Publication goes back to unlisted.                                                     |
+| Flag                      | Command               | What it does                                                                                                                                                                             |
+| ------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--password <password>`   | `publish`             | Sets or replaces the password, 4 to 200 characters. Omit it on a later publish to keep the current password. `publish` prints `Password required to open.` when the Publication has one. |
+| `--unlock-for <duration>` | `publish`, `password` | Limits how long a viewer stays unlocked: `30m`, `12h`, `7d`. `never` removes the limit. The default is no limit.                                                                         |
+| `--set <password>`        | `password`            | Sets or replaces the password on an existing Publication.                                                                                                                                |
+| `--clear`                 | `password`            | Removes the password. The Publication goes back to unlisted.                                                                                                                             |
 
 What a viewer sees:
 
@@ -97,7 +97,7 @@ What a viewer sees:
 - The password covers every Artifact Path of a directory Artifact, not only the Entry Page.
 - A correct password sets one cookie for that Publication. With no `--unlock-for`, the viewer stays unlocked until the password changes.
 - Changing or clearing the password ends every existing unlock.
-- Ten wrong passwords from one address within a minute lock that address out of that Publication for the rest of the minute.
+- One address can try ten passwords per minute on one Publication. Further tries in that minute are refused, including the correct password.
 
 Limits:
 
@@ -232,7 +232,7 @@ claude mcp add --transport http artifacts https://artifacts.thefocus.ai/mcp \
   --header "Authorization: Bearer tfai_mcp_..."
 ```
 
-Tools: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`.
+Tools: `publish_artifact`, `update_artifact`, `set_artifact_password`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`.
 
 Two differences from the CLI, both because the endpoint cannot read your filesystem:
 

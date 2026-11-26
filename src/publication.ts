@@ -65,8 +65,8 @@ import {
   parseUnlockFor,
   passwordPage,
   unlockCookie,
-  unlockFailureLimit,
-  unlockFailureWindowMs,
+  unlockAttemptLimit,
+  unlockAttemptWindowMs,
   verifyPassword,
 } from "./password-gate.js";
 
@@ -194,6 +194,11 @@ export interface PublishArtifactResult {
   revisionWindowExpiresAt: Date;
   decision: PublishArtifactDecision;
   artifactPaths: string[];
+  /**
+   * Whether the Publication requires a password after this publish. Absent
+   * when an API server from before Publication Passwords answered.
+   */
+  hasPassword?: boolean;
 }
 
 export interface RemovePublicationInput {
@@ -566,14 +571,14 @@ async function passwordGateResponse(input: {
     const limitKey = `${opaqueId}:${clientAddress(request)}`;
     const tooManyAttempts = () =>
       gatePage(429, "Too many attempts. Wait a minute, then try again.");
-    const recentFailures = () =>
-      input.metadataStore.countUnlockFailures(
-        limitKey,
-        new Date(Date.now() - unlockFailureWindowMs),
-      );
-    if ((await recentFailures()) >= unlockFailureLimit) {
-      return tooManyAttempts();
-    }
+    // Record first, then count, so parallel guesses cannot all slip under
+    // the limit. Every POST counts, including a correct password.
+    await input.metadataStore.recordUnlockAttempt(limitKey);
+    const attempts = await input.metadataStore.countUnlockAttempts(
+      limitKey,
+      new Date(Date.now() - unlockAttemptWindowMs),
+    );
+    if (attempts > unlockAttemptLimit) return tooManyAttempts();
     const form = await request.formData().catch(() => null);
     const candidate = form?.get("password");
     if (
@@ -596,10 +601,7 @@ async function passwordGateResponse(input: {
         }),
       });
     }
-    await input.metadataStore.recordUnlockFailure(limitKey);
-    return (await recentFailures()) >= unlockFailureLimit
-      ? tooManyAttempts()
-      : gatePage(401, "That password is not right.");
+    return gatePage(401, "That password is not right.");
   }
 
   const unlocked = isUnlocked({
@@ -1263,6 +1265,7 @@ export function publishArtifactSummary(
     revisionWindowExpiresAt?: Date;
     decision?: PublishArtifactDecision;
     excludedArtifactPaths?: string[];
+    hasPassword?: boolean;
   },
   options: { verbose?: boolean } = {},
 ): string {
@@ -1273,6 +1276,7 @@ export function publishArtifactSummary(
   const lines = [
     `${action} ${basename(result.publicationUrlPath)} to ${result.publicationUrl}${suffix}`,
   ];
+  if (result.hasPassword) lines.push("Password required to open.");
   const excluded = result.excludedArtifactPaths ?? [];
   if (excluded.length > 0) {
     lines.push(
@@ -1384,6 +1388,11 @@ async function createFreshPublication(
     decision: PublishArtifactDecision;
   },
 ): Promise<PublishArtifactResult> {
+  // Before the upload, so a rejected password leaves nothing in Blob storage.
+  const protection = await passwordProtectionFields(input, {
+    pwa: input.pwa ?? false,
+    hasPassword: false,
+  });
   const opaqueId = input.opaqueIdFactory?.() ?? createOpaqueId();
   const packaged = await input.packaged.writeForPublication(opaqueId);
   const title = input.title ?? packaged.derivedTitle ?? null;
@@ -1392,10 +1401,6 @@ async function createFreshPublication(
       "PWA publish requires a DNS-safe Publication id. Use --new --pwa to create a fresh PWA Publication.",
     );
   }
-  const protection = await passwordProtectionFields(input, {
-    pwa: input.pwa ?? false,
-    hasPassword: false,
-  });
   const publication = await input.metadataStore.create({
     opaqueId,
     publisherEmail: input.publisherEmail,
@@ -1427,6 +1432,7 @@ async function createFreshPublication(
     revisionWindowExpiresAt: input.revisionWindowExpiresAt,
     decision: input.decision,
     artifactPaths: packaged.artifactPaths,
+    hasPassword: publication.passwordHash !== null,
   };
 }
 
@@ -1451,8 +1457,13 @@ async function updateExistingPublication(
     existing.activeArtifactLocator,
     input.contentStore,
   );
-  const packaged = await input.packaged.writeForPublication(input.opaqueId);
   const pwa = input.pwa === true || existing.pwa;
+  // Before the upload, so a rejected password leaves nothing in Blob storage.
+  const protection = await passwordProtectionFields(input, {
+    pwa,
+    hasPassword: existing.passwordHash !== null,
+  });
+  const packaged = await input.packaged.writeForPublication(input.opaqueId);
   if (pwa && !isDnsSafeOpaqueId(input.opaqueId)) {
     throw new Error(
       "This Publication's id cannot be a DNS label. Publish --new --pwa to create a PWA at a wildcard host.",
@@ -1468,10 +1479,7 @@ async function updateExistingPublication(
     revisionWindowExpiresAt: input.revisionWindowExpiresAt,
     ...(title !== undefined ? { title } : {}),
     pwa,
-    ...(await passwordProtectionFields(input, {
-      pwa,
-      hasPassword: existing.passwordHash !== null,
-    })),
+    ...protection,
   });
   if (!publication) throw new Error("Publication URL cannot be updated.");
   await input.contentStore.delete(oldLocators);
@@ -1495,6 +1503,7 @@ async function updateExistingPublication(
     revisionWindowExpiresAt: input.revisionWindowExpiresAt,
     decision: input.decision,
     artifactPaths: packaged.artifactPaths,
+    hasPassword: publication.passwordHash !== null,
   };
 }
 

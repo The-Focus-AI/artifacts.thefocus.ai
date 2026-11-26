@@ -59,9 +59,9 @@ export interface PublicationMetadataStore {
   ): Promise<PublicationMetadata | null>;
   markRemoved(opaqueId: string): Promise<PublicationMetadata | null>;
   listByPublisherEmail(publisherEmail: string): Promise<PublicationMetadata[]>;
-  /** Wrong-password attempts for `limitKey` at or after `since`. */
-  countUnlockFailures(limitKey: string, since: Date): Promise<number>;
-  recordUnlockFailure(limitKey: string): Promise<void>;
+  /** Password attempts for `limitKey` at or after `since`. */
+  countUnlockAttempts(limitKey: string, since: Date): Promise<number>;
+  recordUnlockAttempt(limitKey: string): Promise<void>;
 }
 
 export interface ClockOptions {
@@ -77,7 +77,8 @@ export interface SqlClient {
 
 export class InMemoryPublicationMetadataStore implements PublicationMetadataStore {
   private readonly rows = new Map<string, PublicationMetadata>();
-  private readonly unlockFailures: { limitKey: string; failedAt: Date }[] = [];
+  private readonly unlockAttempts: { limitKey: string; attemptedAt: Date }[] =
+    [];
   private readonly now: () => Date;
 
   constructor(options: ClockOptions = {}) {
@@ -177,16 +178,16 @@ export class InMemoryPublicationMetadataStore implements PublicationMetadataStor
       .map(clonePublication);
   }
 
-  async countUnlockFailures(limitKey: string, since: Date): Promise<number> {
-    return this.unlockFailures.filter(
+  async countUnlockAttempts(limitKey: string, since: Date): Promise<number> {
+    return this.unlockAttempts.filter(
       (failure) =>
         failure.limitKey === limitKey &&
-        failure.failedAt.getTime() >= since.getTime(),
+        failure.attemptedAt.getTime() >= since.getTime(),
     ).length;
   }
 
-  async recordUnlockFailure(limitKey: string): Promise<void> {
-    this.unlockFailures.push({ limitKey, failedAt: this.now() });
+  async recordUnlockAttempt(limitKey: string): Promise<void> {
+    this.unlockAttempts.push({ limitKey, attemptedAt: this.now() });
   }
 }
 
@@ -325,23 +326,23 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
     return result.rows.map(mapPublicationRow);
   }
 
-  async countUnlockFailures(limitKey: string, since: Date): Promise<number> {
+  async countUnlockAttempts(limitKey: string, since: Date): Promise<number> {
     const result = await this.sql.query<{ count: number | string }>(
-      "select count(*) as count from publication_unlock_failures where limit_key = $1 and failed_at >= $2",
+      "select count(*) as count from publication_unlock_attempts where limit_key = $1 and attempted_at >= $2",
       [limitKey, since],
     );
     return Number(result.rows[0]?.count ?? 0);
   }
 
-  async recordUnlockFailure(limitKey: string): Promise<void> {
+  async recordUnlockAttempt(limitKey: string): Promise<void> {
     const timestamp = this.now();
     // Rows older than an hour are past every window; drop this key's.
     await this.sql.query(
-      "delete from publication_unlock_failures where limit_key = $1 and failed_at < $2",
+      "delete from publication_unlock_attempts where limit_key = $1 and attempted_at < $2",
       [limitKey, new Date(timestamp.getTime() - 3_600_000)],
     );
     await this.sql.query(
-      "insert into publication_unlock_failures (limit_key, failed_at) values ($1, $2)",
+      "insert into publication_unlock_attempts (limit_key, attempted_at) values ($1, $2)",
       [limitKey, timestamp],
     );
   }

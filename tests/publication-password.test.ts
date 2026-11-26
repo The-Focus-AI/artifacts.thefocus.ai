@@ -237,16 +237,16 @@ describe("Publication passwords", () => {
     expect(check("2026-11-26T12:01:00.000Z")).toBe(false);
   });
 
-  it("locks out a client address after ten wrong passwords, even for the right password", async () => {
+  it("allows one client address ten password attempts a minute, then refuses even the right password", async () => {
     const stores = await publishProtected();
     const attacker = { "x-forwarded-for": "203.0.113.9, 10.0.0.1" };
 
-    for (let attempt = 1; attempt <= 9; attempt += 1) {
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
       expect((await post(stores, url, "guess", attacker)).status).toBe(401);
     }
-    const tenth = await post(stores, url, "guess", attacker);
-    expect(tenth.status).toBe(429);
-    expect(await tenth.text()).toContain("Too many attempts");
+    const eleventh = await post(stores, url, "guess", attacker);
+    expect(eleventh.status).toBe(429);
+    expect(await eleventh.text()).toContain("Too many attempts");
 
     const lockedOut = await post(stores, url, "open-sesame", attacker);
     expect(lockedOut.status).toBe(429);
@@ -256,6 +256,43 @@ describe("Publication passwords", () => {
       "x-forwarded-for": "198.51.100.4",
     });
     expect(otherAddress.status).toBe(303);
+  });
+
+  it("counts parallel guesses against the limit before checking any of them", async () => {
+    const stores = await publishProtected();
+    const attacker = { "x-forwarded-for": "203.0.113.9" };
+
+    const responses = await Promise.all(
+      Array.from({ length: 30 }, (_, index) =>
+        post(stores, url, index === 29 ? "open-sesame" : "guess", attacker),
+      ),
+    );
+
+    const checked = responses.filter((response) => response.status !== 429);
+    expect(checked.length).toBeLessThanOrEqual(10);
+  });
+
+  it("rejects a bad password or unlock limit before anything is uploaded", async () => {
+    const stores = await publishProtected({ password: undefined });
+    const write = vi.spyOn(stores.contentStore, "write");
+
+    await expect(
+      publishArtifact({
+        ...stores.publishInput,
+        forceNew: true,
+        password: "abc",
+      }),
+    ).rejects.toThrow("Password must be 4 to 200 characters.");
+    await expect(
+      publishArtifact({
+        ...stores.publishInput,
+        updatePublicationUrl: url,
+        password: "open-sesame",
+        unlockFor: "soon",
+      }),
+    ).rejects.toThrow("--unlock-for takes a duration");
+
+    expect(write).not.toHaveBeenCalled();
   });
 
   it("keeps refusing POST on a Publication with no password", async () => {
@@ -460,24 +497,24 @@ describe("Publication password storage in Postgres", () => {
     expect(updatedValue(untouched, "updated_at")).toBeInstanceOf(Date);
   });
 
-  it("counts and records unlock failures by limit key", async () => {
+  it("counts and records unlock attempts by limit key", async () => {
     const sql = recordingSql();
     const store = new PostgresPublicationMetadataStore(sql, {
       now: () => new Date("2026-11-26T12:00:00.000Z"),
     });
     const since = new Date("2026-11-26T11:59:00.000Z");
 
-    expect(await store.countUnlockFailures("Locked01:203.0.113.9", since)).toBe(
+    expect(await store.countUnlockAttempts("Locked01:203.0.113.9", since)).toBe(
       3,
     );
     expect(sql.statements[0]).toEqual({
-      sql: "select count(*) as count from publication_unlock_failures where limit_key = $1 and failed_at >= $2",
+      sql: "select count(*) as count from publication_unlock_attempts where limit_key = $1 and attempted_at >= $2",
       params: ["Locked01:203.0.113.9", since],
     });
 
-    await store.recordUnlockFailure("Locked01:203.0.113.9");
+    await store.recordUnlockAttempt("Locked01:203.0.113.9");
     expect(sql.statements.at(-1)).toEqual({
-      sql: "insert into publication_unlock_failures (limit_key, failed_at) values ($1, $2)",
+      sql: "insert into publication_unlock_attempts (limit_key, attempted_at) values ($1, $2)",
       params: ["Locked01:203.0.113.9", new Date("2026-11-26T12:00:00.000Z")],
     });
   });
@@ -504,7 +541,7 @@ describe("Publication password CLI", () => {
         hasPassword: true,
         unlockTtlMs: null,
       })),
-      publish: vi.fn(async () => ({
+      publish: vi.fn(async (..._args: unknown[]) => ({
         opaqueId: "Locked01",
         publicationUrlPath: "/a/Locked01",
         publicationUrl: url,
@@ -513,6 +550,7 @@ describe("Publication password CLI", () => {
         revisionWindowExpiresAt: new Date("2026-11-26T00:15:00.000Z"),
         decision: "created" as const,
         artifactPaths: [],
+        hasPassword: false,
       })),
     };
   }
@@ -543,6 +581,50 @@ describe("Publication password CLI", () => {
       sourcePath,
       { password: "open-sesame", unlockFor: "7d" },
     ]);
+  });
+
+  it("prints that a password is required, keeps = inside a password, and rejects a flag with no value", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "artifacts-password-cli-"));
+    const sourcePath = join(dir, "report.html");
+    await writeFile(sourcePath, secretBody);
+    const apiClient = fakeApiClient();
+    apiClient.publish.mockImplementation(async () => ({
+      ...(await fakeApiClient().publish()),
+      hasPassword: true,
+    }));
+    const stdout = capture();
+
+    await runCli(["publish", sourcePath, "--password=a=b=c"], {
+      env,
+      configDir: dir,
+      stdout: stdout.stream,
+      apiClient,
+    });
+    expect(apiClient.publish.mock.calls[0]![2]).toMatchObject({
+      password: "a=b=c",
+    });
+    expect(stdout.text()).toContain("\nPassword required to open.\n");
+
+    for (const argv of [
+      ["publish", sourcePath, "--password"],
+      ["publish", sourcePath, "--password", "--open"],
+      ["password", url, "--set"],
+      ["password", url, "--unlock-for"],
+    ]) {
+      const stderr = capture();
+      const exitCode = await runCli(argv, {
+        env,
+        configDir: dir,
+        stdout: capture().stream,
+        stderr: stderr.stream,
+        apiClient,
+        openBrowser: async () => {},
+      });
+      expect(exitCode).toBe(1);
+      expect(stderr.text()).toContain("requires a value.");
+    }
+    expect(apiClient.publish).toHaveBeenCalledTimes(1);
+    expect(apiClient.setPassword).not.toHaveBeenCalled();
   });
 
   it("sets and clears a password with the password command", async () => {

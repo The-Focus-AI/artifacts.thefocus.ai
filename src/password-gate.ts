@@ -18,9 +18,9 @@ const scryptKeyLength = 32;
 const minPasswordLength = 4;
 const maxPasswordLength = 200;
 
-/** Wrong passwords allowed per Publication and client address per window. */
-export const unlockFailureLimit = 10;
-export const unlockFailureWindowMs = 60_000;
+/** Password attempts allowed per Publication and client address per window. */
+export const unlockAttemptLimit = 10;
+export const unlockAttemptWindowMs = 60_000;
 
 /** Browsers cap cookie lifetime at 400 days. Used when an unlock has no limit. */
 const maxCookieAgeSeconds = 400 * 24 * 60 * 60;
@@ -183,6 +183,12 @@ export function passwordPage(error: string | null): string {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Password required</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Courier+Prime&family=Inter:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap"
+      rel="stylesheet"
+    />
     <style>
       :root {
         --paper: #faf9f6;

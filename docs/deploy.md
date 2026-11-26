@@ -93,7 +93,7 @@ Apply `migrations/0008_add_publication_pwa.sql` to Neon before relying on
 
 Apply `migrations/0009_add_publication_passwords.sql` to Neon before deploying
 the Publication Password code. Every publish writes the new `publications`
-columns, and the gate reads and writes `publication_unlock_failures`. No new environment variable is needed.
+columns, and the gate reads and writes `publication_unlock_attempts`. No new environment variable is needed.
 
 ## Environment variables
 

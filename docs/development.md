@@ -20,7 +20,7 @@ Apply `migrations/0001_publications.sql` to the Neon/Postgres database before us
 - Local Source path and Revision Window expiry fields
 - `title` (human-readable title, derived from `<title>` or supplied with `--title`)
 - `pwa` (whether the share URL is the wildcard origin root; see `docs/adr/0009-pwas-require-wildcard-subdomain-at-origin-root.md` and `migrations/0008_add_publication_pwa.sql`)
-- `password_hash` and `unlock_ttl_ms` (Publication Password; see `docs/adr/0010-publication-passwords.md` and `migrations/0009_add_publication_passwords.sql`, which also creates `publication_unlock_failures`)
+- `password_hash` and `unlock_ttl_ms` (Publication Password; see `docs/adr/0010-publication-passwords.md` and `migrations/0009_add_publication_passwords.sql`, which also creates `publication_unlock_attempts`)
 - created, updated, and removed timestamps
 
 Apply `migrations/0005_create_living_docs.sql` for the Living Doc collaboration

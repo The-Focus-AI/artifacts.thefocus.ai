@@ -100,6 +100,14 @@ export async function runCli(
       return 0;
     }
 
+    // A flag with no value parses as "true". For a password that would
+    // silently set the password to the word "true".
+    for (const flag of ["password", "set", "unlock-for"]) {
+      if (options[flag] === "true" || options[flag] === "") {
+        throw new Error(`--${flag} requires a value.`);
+      }
+    }
+
     if (command === "publish" && firstArg) {
       const token = await resolvePublisherToken({ env, configDir });
       if (!token.token) throw new Error("A valid Publisher Token is required");
@@ -713,9 +721,11 @@ function parseFlags(flags: string[]): Record<string, string | undefined> {
   for (let index = 0; index < flags.length; index += 1) {
     const flag = flags[index];
     if (!flag?.startsWith("--")) continue;
-    const [name, inlineValue] = flag.slice(2).split("=", 2);
-    if (inlineValue !== undefined) {
-      parsed[name] = inlineValue;
+    // Everything after the first "=" is the value: a password may contain "=".
+    const equals = flag.indexOf("=");
+    const name = flag.slice(2, equals < 0 ? undefined : equals);
+    if (equals >= 0) {
+      parsed[name] = flag.slice(equals + 1);
       continue;
     }
     const next = flags[index + 1];

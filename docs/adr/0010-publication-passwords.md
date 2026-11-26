@@ -32,9 +32,11 @@ Artifact Path is served.
 - **Unlock.** A correct password sets one `HttpOnly` cookie scoped to the
   Publication path. The cookie holds a timestamp and an HMAC of it. The HMAC key
   is the stored password hash.
-- **Wrong passwords.** Ten wrong passwords for one Publication from one client
-  address within a minute return 429 for the rest of that minute, including for
-  the correct password. Failures are rows in `publication_unlock_failures`.
+- **Attempt limit.** One client address can submit ten passwords per minute
+  for one Publication. Further attempts in that minute return 429, including the
+  correct password. Each attempt is a row in `publication_unlock_attempts`,
+  written before the password is checked, so parallel guesses cannot slip
+  under the limit.
 - **Who can change it.** Any Publisher, the same as Removal.
 
 ## Considered options
@@ -72,8 +74,8 @@ Artifact Path is served.
   Publication. Publishing the same Local Source after the Revision Window
   creates a new Publication without one, unless `--password` is passed again.
   An update keeps it.
-- **Rate limit is per address.** An attacker with many addresses gets ten tries
-  per minute from each. Passwords are 4 to 200 characters; short passwords are
+- **The attempt limit is per address.** An attacker with many addresses gets
+  ten tries per minute from each. Passwords are 4 to 200 characters; short passwords are
   weak against that.
 - **Migration.** `migrations/0009_add_publication_passwords.sql` must be applied
   before the code is deployed.
