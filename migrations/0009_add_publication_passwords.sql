@@ -14,3 +14,6 @@ create table if not exists publication_unlock_attempts (
 
 create index if not exists publication_unlock_attempts_key_idx
 on publication_unlock_attempts (limit_key, attempted_at);
+
+create index if not exists publication_unlock_attempts_attempted_at_idx
+on publication_unlock_attempts (attempted_at);

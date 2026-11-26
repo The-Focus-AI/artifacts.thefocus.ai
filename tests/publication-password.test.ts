@@ -455,14 +455,28 @@ describe("Publication password storage in Postgres", () => {
     return statement.params[columns.indexOf(column)];
   }
 
+  // `column = $n`, or `column = case when $flag then $n else column end`.
+  // Returns { changed, value }: changed is false when the SQL keeps the
+  // stored value.
   function updatedValue(
     statement: { sql: string; params: unknown[] },
     column: string,
   ) {
+    const guarded = statement.sql.match(
+      new RegExp(
+        `${column} = case when \\$(\\d+) then \\$(\\d+) else ${column} end`,
+      ),
+    );
+    if (guarded) {
+      return {
+        changed: statement.params[Number(guarded[1]) - 1],
+        value: statement.params[Number(guarded[2]) - 1],
+      };
+    }
     const position = statement.sql.match(
       new RegExp(`${column} = \\$(\\d+)`),
     )![1];
-    return statement.params[Number(position) - 1];
+    return { changed: true, value: statement.params[Number(position) - 1] };
   }
 
   it("binds the password hash and unlock limit to their own columns and reads them back", async () => {
@@ -486,15 +500,37 @@ describe("Publication password storage in Postgres", () => {
 
     await store.update("Locked01", { passwordHash: null, unlockTtlMs: null });
     const cleared = sql.statements.at(-1)!;
-    expect(updatedValue(cleared, "password_hash")).toBeNull();
-    expect(updatedValue(cleared, "unlock_ttl_ms")).toBeNull();
+    expect(updatedValue(cleared, "password_hash")).toEqual({
+      changed: true,
+      value: null,
+    });
+    expect(updatedValue(cleared, "unlock_ttl_ms")).toEqual({
+      changed: true,
+      value: null,
+    });
+
+    await store.update("Locked01", { passwordHash: "scrypt$next" });
+    const replaced = sql.statements.at(-1)!;
+    expect(updatedValue(replaced, "password_hash")).toEqual({
+      changed: true,
+      value: "scrypt$next",
+    });
+    expect(updatedValue(replaced, "unlock_ttl_ms").changed).toBe(false);
+
+    await store.update("Locked01", { unlockTtlMs: 60_000 });
+    const limited = sql.statements.at(-1)!;
+    expect(updatedValue(limited, "unlock_ttl_ms")).toEqual({
+      changed: true,
+      value: 60_000,
+    });
+    expect(updatedValue(limited, "password_hash").changed).toBe(false);
 
     await store.update("Locked01", { title: "Renamed" });
     const untouched = sql.statements.at(-1)!;
-    expect(updatedValue(untouched, "password_hash")).toBe("scrypt$stored");
-    expect(updatedValue(untouched, "unlock_ttl_ms")).toBe(43_200_000);
-    expect(updatedValue(untouched, "title")).toBe("Renamed");
-    expect(updatedValue(untouched, "updated_at")).toBeInstanceOf(Date);
+    expect(updatedValue(untouched, "password_hash").changed).toBe(false);
+    expect(updatedValue(untouched, "unlock_ttl_ms").changed).toBe(false);
+    expect(updatedValue(untouched, "title").value).toBe("Renamed");
+    expect(updatedValue(untouched, "updated_at").value).toBeInstanceOf(Date);
   });
 
   it("counts and records unlock attempts by limit key", async () => {

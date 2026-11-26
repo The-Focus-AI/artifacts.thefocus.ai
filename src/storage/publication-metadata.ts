@@ -273,8 +273,8 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
             title = $6,
             pwa = $7,
             updated_at = $8,
-            password_hash = $9,
-            unlock_ttl_ms = $10
+            password_hash = case when $9 then $10 else password_hash end,
+            unlock_ttl_ms = case when $11 then $12 else unlock_ttl_ms end
         where opaque_id = $1
         returning *
       `,
@@ -291,12 +291,13 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
         Object.hasOwn(input, "title") ? (input.title ?? null) : existing.title,
         Object.hasOwn(input, "pwa") ? Boolean(input.pwa) : existing.pwa,
         this.now(),
-        Object.hasOwn(input, "passwordHash")
-          ? (input.passwordHash ?? null)
-          : existing.passwordHash,
-        Object.hasOwn(input, "unlockTtlMs")
-          ? (input.unlockTtlMs ?? null)
-          : existing.unlockTtlMs,
+        // The password columns change only when the caller names them, in
+        // SQL, so a publish cannot write back a password it read before a
+        // concurrent change.
+        Object.hasOwn(input, "passwordHash"),
+        input.passwordHash ?? null,
+        Object.hasOwn(input, "unlockTtlMs"),
+        input.unlockTtlMs ?? null,
       ],
     );
     return result.rows[0] ? mapPublicationRow(result.rows[0]) : null;
@@ -336,10 +337,11 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
 
   async recordUnlockAttempt(limitKey: string): Promise<void> {
     const timestamp = this.now();
-    // Rows older than an hour are past every window; drop this key's.
+    // Rows older than an hour are past every window. Drop them for every
+    // key, so addresses that never come back do not leave rows behind.
     await this.sql.query(
-      "delete from publication_unlock_attempts where limit_key = $1 and attempted_at < $2",
-      [limitKey, new Date(timestamp.getTime() - 3_600_000)],
+      "delete from publication_unlock_attempts where attempted_at < $1",
+      [new Date(timestamp.getTime() - 3_600_000)],
     );
     await this.sql.query(
       "insert into publication_unlock_attempts (limit_key, attempted_at) values ($1, $2)",
