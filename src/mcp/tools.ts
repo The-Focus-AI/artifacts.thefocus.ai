@@ -15,6 +15,7 @@ import {
   publicationShareUrl,
   publishUploadedArtifact,
   removePublication,
+  setPublicationPassword,
   type InlineArtifactFile,
 } from "../publication.js";
 import type { McpToolSpec } from "./spec.js";
@@ -146,6 +147,18 @@ export const artifactsMcpTools: McpToolSpec[] = [
         .describe(
           "Publish as an installable PWA at the wildcard origin root. Requires a root manifest, service worker, and icon.",
         ),
+      password: z
+        .string()
+        .optional()
+        .describe(
+          "Require this password before the Publication opens. Not available with `pwa`.",
+        ),
+      unlockFor: z
+        .string()
+        .optional()
+        .describe(
+          "How long a password unlock lasts: 30m, 12h, 7d, or never (the default).",
+        ),
     },
     async run(args, context) {
       const upload = prepareInlineArtifactUpload({
@@ -161,6 +174,8 @@ export const artifactsMcpTools: McpToolSpec[] = [
         stateStore: context.publicationStateStore,
         title: args.title as string | undefined,
         pwa: args.pwa === true,
+        password: args.password as string | undefined,
+        unlockFor: args.unlockFor as string | undefined,
       });
       return {
         publicationUrl: result.publicationUrl,
@@ -201,6 +216,18 @@ export const artifactsMcpTools: McpToolSpec[] = [
         .describe(
           "Promote this Publication to an installable PWA at the wildcard origin root.",
         ),
+      password: z
+        .string()
+        .optional()
+        .describe(
+          "Set or replace the password. Omit to keep the current one. Not available with `pwa`.",
+        ),
+      unlockFor: z
+        .string()
+        .optional()
+        .describe(
+          "How long a password unlock lasts: 30m, 12h, 7d, or never (the default).",
+        ),
     },
     async run(args, context) {
       const upload = prepareInlineArtifactUpload({
@@ -217,6 +244,8 @@ export const artifactsMcpTools: McpToolSpec[] = [
         updatePublicationUrl: args.publicationUrl as string,
         title: args.title as string | undefined,
         pwa: args.pwa === true,
+        password: args.password as string | undefined,
+        unlockFor: args.unlockFor as string | undefined,
       });
       return {
         publicationUrl: result.publicationUrl,
@@ -247,6 +276,42 @@ export const artifactsMcpTools: McpToolSpec[] = [
     },
   },
   {
+    name: "set_artifact_password",
+    title: "Set or clear a Publication password",
+    kind: "mutation",
+    description:
+      "Set, replace or clear the password a viewer must enter before a Publication opens. Changing or clearing it ends every existing unlock. Not available for PWA Publications.",
+    inputSchema: {
+      publicationUrl: z.string().describe("The Publication URL."),
+      password: z
+        .string()
+        .optional()
+        .describe("The new password, 4 to 200 characters."),
+      clear: z
+        .boolean()
+        .optional()
+        .describe("Remove the password. Do not combine with `password`."),
+      unlockFor: z
+        .string()
+        .optional()
+        .describe(
+          "How long a password unlock lasts: 30m, 12h, 7d, or never (the default).",
+        ),
+    },
+    async run(args, context) {
+      if (args.clear === true && args.password !== undefined) {
+        throw new Error("Pass `password` or `clear`, not both.");
+      }
+      return setPublicationPassword({
+        publicationUrl: args.publicationUrl as string,
+        password:
+          args.clear === true ? null : (args.password as string | undefined),
+        unlockFor: args.unlockFor as string | undefined,
+        metadataStore: context.publicationMetadataStore,
+      });
+    },
+  },
+  {
     name: "list_artifacts",
     title: "List Publications",
     kind: "discovery",
@@ -265,6 +330,7 @@ export const artifactsMcpTools: McpToolSpec[] = [
         updatedAt: publication.updatedAt,
         publicationUrl: publicationShareUrl(context.publicBaseUrl, publication),
         pwa: publication.pwa,
+        hasPassword: publication.passwordHash !== null,
       }));
     },
   },

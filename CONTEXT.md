@@ -24,6 +24,14 @@ _Avoid_: Deployment, upload, share link, channel, token
 Accessible to anyone who has the URL, but absent from public indexes, browsing interfaces, and search engine indexing. The service may have a minimal TheFocus.AI landing page, but it does not expose a public Publication listing.
 _Avoid_: Private, authenticated, secret
 
+**Publication Password**:
+An optional password a Publisher sets on a Publication. A viewer must enter it before any Artifact Path is served. A Publication with a Publication Password is still Unlisted: it is absent from indexes and listings, and it additionally requires the password. A Publication Password is shared by everyone the Publisher gives it to; it does not identify a viewer.
+_Avoid_: Private, authenticated, login, viewer account, Publisher Token
+
+**Unlock**:
+The state of a browser after a viewer enters the correct Publication Password. An Unlock is one cookie scoped to one Publication. It lasts until the Publication Password changes, or for the limit the Publisher set with `--unlock-for`.
+_Avoid_: Session, login, sign-in
+
 **Publisher**:
 A verified TheFocus.AI team member who can create and update Publications.
 _Avoid_: User, admin, owner

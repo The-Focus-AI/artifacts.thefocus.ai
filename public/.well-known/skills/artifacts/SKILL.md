@@ -12,7 +12,7 @@ description: >
 
 # TheFocus.AI Artifacts
 
-Skill version: 1.4.1
+Skill version: 1.5.0
 
 Artifacts turns local agent output into an unlisted Publication URL at
 `https://artifacts.thefocus.ai/a/{id}`, an installable PWA at
@@ -98,6 +98,25 @@ Useful flags:
 - `--update <Publication URL>` — intentionally update an older active Publication
 - `--verbose` — print excluded packaging paths
 - `--pwa` — publish an installable PWA at `https://{opaque}.artifacts.thefocus.ai/`
+- `--password <password>` — require a password before the Publication opens
+- `--unlock-for 7d` — limit how long a viewer stays unlocked (`30m`, `12h`, `7d`, `never`)
+
+## Password-protect a Publication
+
+Use a password when the user asks for one, or says the content must not open from the URL alone. Do not add one unasked.
+
+```bash
+npx @the-focus-ai/artifacts publish ./report.html --password "open-sesame"
+npx @the-focus-ai/artifacts password https://artifacts.thefocus.ai/a/Ab3xY9kQ --set "new-password"
+npx @the-focus-ai/artifacts password https://artifacts.thefocus.ai/a/Ab3xY9kQ --clear
+```
+
+- Use the password the user gives you. If they give none, generate a random one and tell them what it is.
+- Return the Publication URL and the password, and tell the user to send them separately.
+- Omit `--password` on a later publish to keep the current password. Changing or clearing it ends every existing unlock.
+- A fresh Publication URL has no password. Pass `--password` again after the Revision Window, or use `--update <Publication URL>`.
+- PWA Publications and Living Docs cannot have a password.
+- MCP: `publish_artifact` and `update_artifact` take `password` and `unlockFor`. `set_artifact_password` sets or clears one.
 
 ## Publish an installable PWA
 
@@ -148,7 +167,7 @@ Rules:
 
 ## MCP instead of the CLI
 
-If an `artifacts` MCP server is connected, prefer its tools over shelling out — same operations, no subprocess: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`. Otherwise use the CLI as above.
+If an `artifacts` MCP server is connected, prefer its tools over shelling out — same operations, no subprocess: `publish_artifact`, `update_artifact`, `set_artifact_password`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`. Otherwise use the CLI as above.
 
 To connect one, add `https://artifacts.thefocus.ai/mcp` as a remote MCP server with no credential — the client runs the OAuth login itself and opens a browser for the human to approve. A pasted Publisher Token still works for clients that only support a static `Authorization: Bearer` header.
 
@@ -159,7 +178,7 @@ Two differences when going through MCP, because that endpoint cannot read the lo
 
 ## Constraints
 
-- Publication URLs are unlisted, not private. Anyone with the exact URL can view them.
+- Publication URLs are unlisted, not private. Anyone with the exact URL can view them, unless the Publication has a password.
 - Do not crawl, guess, infer, or enumerate `/a/` Publication URLs or `{opaque}.artifacts.thefocus.ai` hosts.
 - There is no public Publication listing and no dashboard in v1.
 - Directory Artifacts need root `index.html` unless `--entry-page` is set.
@@ -170,4 +189,4 @@ Two differences when going through MCP, because that endpoint cannot read the lo
 
 - Share the Publication URL or Living Doc Review Link from the current CLI run.
 - For Living Docs, explain that the Review Link lets them edit and comment without logging in.
-- Do not invent URLs or claim Publications are private/authenticated viewer-gated.
+- Do not invent URLs. Only say a Publication needs a password when you set one in this run.

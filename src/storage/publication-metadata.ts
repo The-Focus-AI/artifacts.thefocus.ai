@@ -13,6 +13,10 @@ export interface PublicationMetadata {
   revisionWindowExpiresAt: Date | null;
   title: string | null;
   pwa: boolean;
+  /** Stored password hash. Never send it to a client. Null = no password. */
+  passwordHash: string | null;
+  /** How long a password unlock lasts. Null = until the password changes. */
+  unlockTtlMs: number | null;
   createdAt: Date;
   updatedAt: Date;
   removedAt: Date | null;
@@ -28,6 +32,8 @@ export interface CreatePublicationInput {
   revisionWindowExpiresAt?: Date | null;
   title?: string | null;
   pwa?: boolean;
+  passwordHash?: string | null;
+  unlockTtlMs?: number | null;
 }
 
 export interface UpdatePublicationInput {
@@ -37,6 +43,8 @@ export interface UpdatePublicationInput {
   revisionWindowExpiresAt?: Date | null;
   title?: string | null;
   pwa?: boolean;
+  passwordHash?: string | null;
+  unlockTtlMs?: number | null;
 }
 
 export interface PublicationMetadataStore {
@@ -51,6 +59,9 @@ export interface PublicationMetadataStore {
   ): Promise<PublicationMetadata | null>;
   markRemoved(opaqueId: string): Promise<PublicationMetadata | null>;
   listByPublisherEmail(publisherEmail: string): Promise<PublicationMetadata[]>;
+  /** Wrong-password attempts for `limitKey` at or after `since`. */
+  countUnlockFailures(limitKey: string, since: Date): Promise<number>;
+  recordUnlockFailure(limitKey: string): Promise<void>;
 }
 
 export interface ClockOptions {
@@ -66,6 +77,7 @@ export interface SqlClient {
 
 export class InMemoryPublicationMetadataStore implements PublicationMetadataStore {
   private readonly rows = new Map<string, PublicationMetadata>();
+  private readonly unlockFailures: { limitKey: string; failedAt: Date }[] = [];
   private readonly now: () => Date;
 
   constructor(options: ClockOptions = {}) {
@@ -85,6 +97,8 @@ export class InMemoryPublicationMetadataStore implements PublicationMetadataStor
       revisionWindowExpiresAt: input.revisionWindowExpiresAt ?? null,
       title: input.title ?? null,
       pwa: input.pwa ?? false,
+      passwordHash: input.passwordHash ?? null,
+      unlockTtlMs: input.unlockTtlMs ?? null,
       createdAt: timestamp,
       updatedAt: timestamp,
       removedAt: null,
@@ -128,6 +142,12 @@ export class InMemoryPublicationMetadataStore implements PublicationMetadataStor
         : row.revisionWindowExpiresAt,
       title: Object.hasOwn(input, "title") ? (input.title ?? null) : row.title,
       pwa: Object.hasOwn(input, "pwa") ? Boolean(input.pwa) : row.pwa,
+      passwordHash: Object.hasOwn(input, "passwordHash")
+        ? (input.passwordHash ?? null)
+        : row.passwordHash,
+      unlockTtlMs: Object.hasOwn(input, "unlockTtlMs")
+        ? (input.unlockTtlMs ?? null)
+        : row.unlockTtlMs,
       updatedAt: this.now(),
     };
     this.rows.set(opaqueId, next);
@@ -156,6 +176,18 @@ export class InMemoryPublicationMetadataStore implements PublicationMetadataStor
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
       .map(clonePublication);
   }
+
+  async countUnlockFailures(limitKey: string, since: Date): Promise<number> {
+    return this.unlockFailures.filter(
+      (failure) =>
+        failure.limitKey === limitKey &&
+        failure.failedAt.getTime() >= since.getTime(),
+    ).length;
+  }
+
+  async recordUnlockFailure(limitKey: string): Promise<void> {
+    this.unlockFailures.push({ limitKey, failedAt: this.now() });
+  }
 }
 
 export class PostgresPublicationMetadataStore implements PublicationMetadataStore {
@@ -183,9 +215,11 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
           revision_window_expires_at,
           title,
           pwa,
+          password_hash,
+          unlock_ttl_ms,
           created_at,
           updated_at
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         returning *
       `,
       [
@@ -199,6 +233,8 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
         input.revisionWindowExpiresAt ?? null,
         input.title ?? null,
         input.pwa ?? false,
+        input.passwordHash ?? null,
+        input.unlockTtlMs ?? null,
         timestamp,
         timestamp,
       ],
@@ -235,7 +271,9 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
             local_source_path = $5,
             title = $6,
             pwa = $7,
-            updated_at = $8
+            updated_at = $8,
+            password_hash = $9,
+            unlock_ttl_ms = $10
         where opaque_id = $1
         returning *
       `,
@@ -252,6 +290,12 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
         Object.hasOwn(input, "title") ? (input.title ?? null) : existing.title,
         Object.hasOwn(input, "pwa") ? Boolean(input.pwa) : existing.pwa,
         this.now(),
+        Object.hasOwn(input, "passwordHash")
+          ? (input.passwordHash ?? null)
+          : existing.passwordHash,
+        Object.hasOwn(input, "unlockTtlMs")
+          ? (input.unlockTtlMs ?? null)
+          : existing.unlockTtlMs,
       ],
     );
     return result.rows[0] ? mapPublicationRow(result.rows[0]) : null;
@@ -279,6 +323,27 @@ export class PostgresPublicationMetadataStore implements PublicationMetadataStor
       [publisherEmail],
     );
     return result.rows.map(mapPublicationRow);
+  }
+
+  async countUnlockFailures(limitKey: string, since: Date): Promise<number> {
+    const result = await this.sql.query<{ count: number | string }>(
+      "select count(*) as count from publication_unlock_failures where limit_key = $1 and failed_at >= $2",
+      [limitKey, since],
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
+  async recordUnlockFailure(limitKey: string): Promise<void> {
+    const timestamp = this.now();
+    // Rows older than an hour are past every window; drop this key's.
+    await this.sql.query(
+      "delete from publication_unlock_failures where limit_key = $1 and failed_at < $2",
+      [limitKey, new Date(timestamp.getTime() - 3_600_000)],
+    );
+    await this.sql.query(
+      "insert into publication_unlock_failures (limit_key, failed_at) values ($1, $2)",
+      [limitKey, timestamp],
+    );
   }
 }
 
@@ -312,6 +377,8 @@ interface PublicationRow {
   revision_window_expires_at: Date | string | null;
   title: string | null;
   pwa: boolean;
+  password_hash?: string | null;
+  unlock_ttl_ms?: number | string | null;
   created_at: Date | string;
   updated_at: Date | string;
   removed_at: Date | string | null;
@@ -334,6 +401,11 @@ function mapPublicationRow(
       : null,
     title: row.title ?? null,
     pwa: Boolean(row.pwa),
+    passwordHash: row.password_hash ?? null,
+    unlockTtlMs:
+      row.unlock_ttl_ms === null || row.unlock_ttl_ms === undefined
+        ? null
+        : Number(row.unlock_ttl_ms),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     removedAt: row.removed_at ? new Date(row.removed_at) : null,

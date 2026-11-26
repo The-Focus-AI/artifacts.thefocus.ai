@@ -15,6 +15,7 @@ import {
   type PublishArtifactDecision,
   type PublishArtifactResult,
   type RemovePublicationResult,
+  type SetPublicationPasswordResult,
 } from "./publication.js";
 import type { LivingDoc } from "./storage/living-doc-metadata.js";
 import type { PublicationMetadata } from "./storage/publication-metadata.js";
@@ -26,6 +27,11 @@ export interface ArtifactApiClient {
     token: string,
     publicationUrl: string,
   ): Promise<RemovePublicationResult>;
+  setPassword(
+    token: string,
+    publicationUrl: string,
+    change: { password?: string | null; unlockFor?: string },
+  ): Promise<SetPublicationPasswordResult>;
   publish(
     token: string,
     sourcePath: string,
@@ -40,6 +46,8 @@ export interface RemotePublishOptions {
   updatePublicationUrl?: string;
   title?: string;
   pwa?: boolean;
+  password?: string;
+  unlockFor?: string;
 }
 
 export class HttpArtifactApiClient implements ArtifactApiClient {
@@ -72,6 +80,23 @@ export class HttpArtifactApiClient implements ArtifactApiClient {
       body: JSON.stringify({ publicationUrl }),
     });
     return (await response.json()) as RemovePublicationResult;
+  }
+
+  async setPassword(
+    token: string,
+    publicationUrl: string,
+    change: { password?: string | null; unlockFor?: string },
+  ): Promise<SetPublicationPasswordResult> {
+    const response = await this.request(
+      "/api/artifacts?action=password",
+      token,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ publicationUrl, ...change }),
+      },
+    );
+    return (await response.json()) as SetPublicationPasswordResult;
   }
 
   async publish(
@@ -344,6 +369,8 @@ export function artifactUploadForm(
       updatePublicationUrl: options.updatePublicationUrl,
       title: options.title,
       pwa: options.pwa ?? false,
+      password: options.password,
+      unlockFor: options.unlockFor,
     }),
   );
   for (const file of upload.files) {
@@ -359,8 +386,13 @@ export function artifactUploadForm(
 
 interface SerializedPublication extends Omit<
   PublicationMetadata,
-  "createdAt" | "updatedAt" | "removedAt" | "revisionWindowExpiresAt"
+  | "createdAt"
+  | "updatedAt"
+  | "removedAt"
+  | "revisionWindowExpiresAt"
+  | "passwordHash"
 > {
+  hasPassword?: boolean;
   createdAt: string;
   updatedAt: string;
   removedAt: string | null;
@@ -388,5 +420,8 @@ function deserializePublication(
       ? new Date(publication.revisionWindowExpiresAt)
       : null,
     pwa: publication.pwa ?? false,
+    // The API never sends the hash.
+    passwordHash: null,
+    unlockTtlMs: publication.unlockTtlMs ?? null,
   };
 }

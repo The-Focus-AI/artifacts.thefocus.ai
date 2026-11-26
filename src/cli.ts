@@ -31,6 +31,8 @@ import {
   publishArtifactSummary,
   removePublicationFromEnvironment,
   removePublicationSummary,
+  setPublicationPassword,
+  setPublicationPasswordSummary,
   type RemovePublicationResult,
 } from "./publication.js";
 import {
@@ -125,6 +127,8 @@ export async function runCli(
             updatePublicationUrl: options.update,
             title: options["title"],
             pwa: Object.hasOwn(options, "pwa"),
+            password: options.password,
+            unlockFor: options["unlock-for"],
           })
         : dependencies.tokenStore || dependencies.metadataStore
           ? await publishArtifactFromEnvironment(sourcePath, {
@@ -136,6 +140,8 @@ export async function runCli(
               updatePublicationUrl: options.update,
               title: options["title"],
               pwa: Object.hasOwn(options, "pwa"),
+              password: options.password,
+              unlockFor: options["unlock-for"],
             })
           : await publishWithDefaultApiClient(sourcePath, token.token, {
               env,
@@ -146,6 +152,8 @@ export async function runCli(
               updatePublicationUrl: options.update,
               title: options["title"],
               pwa: Object.hasOwn(options, "pwa"),
+              password: options.password,
+              unlockFor: options["unlock-for"],
             });
       stdout.write(
         `${publishArtifactSummary(result, { verbose: options.verbose === "true" })}\n`,
@@ -203,6 +211,43 @@ export async function runCli(
       const result = await remove(firstArg);
       stdout.write(`${removePublicationSummary(result)}\n`);
       return 0;
+    }
+
+    if (command === "password" && firstArg) {
+      const clear = Object.hasOwn(options, "clear");
+      if (clear && (options.set !== undefined || options["unlock-for"])) {
+        throw new Error(
+          "--clear cannot be combined with --set or --unlock-for.",
+        );
+      }
+      const change = {
+        password: clear ? null : options.set,
+        unlockFor: options["unlock-for"],
+      };
+      if (change.password === undefined && change.unlockFor === undefined) {
+        throw new Error(
+          "password requires --set <password>, --clear, or --unlock-for <duration>.",
+        );
+      }
+      const token = await resolvePublisherToken({ env, configDir });
+      if (!token.token) throw new Error("A valid Publisher Token is required");
+      const result = dependencies.metadataStore
+        ? await (async () => {
+            await authenticatePublisherToken({
+              token: token.token,
+              store: dependencies.tokenStore ?? createNeonPublisherTokenStore(),
+            });
+            return setPublicationPassword({
+              publicationUrl: firstArg,
+              ...change,
+              metadataStore: dependencies.metadataStore!,
+            });
+          })()
+        : await (
+            dependencies.apiClient ?? defaultApiClient(env, options["base-url"])
+          ).setPassword(token.token, firstArg, change);
+      stdout.write(`${setPublicationPasswordSummary(result)}\n`);
+      return result.status === "updated" ? 0 : 1;
     }
 
     if (command === "login") {
@@ -613,6 +658,8 @@ async function publishWithDefaultApiClient(
     updatePublicationUrl?: string;
     title?: string;
     pwa?: boolean;
+    password?: string;
+    unlockFor?: string;
   },
 ) {
   const stateStore = new FilePublicationStateStore(options.configDir);
@@ -636,6 +683,8 @@ async function publishWithDefaultApiClient(
     updatePublicationUrl,
     title: options.title,
     pwa: options.pwa,
+    password: options.password,
+    unlockFor: options.unlockFor,
   });
   try {
     await stateStore.set({
@@ -738,9 +787,10 @@ function readStdin(stream: NodeJS.ReadableStream): Promise<string> {
 
 function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
   output.write(
-    "Usage: npx @the-focus-ai/artifacts <login|logout|whoami|publish|remove|list|doc|token>\n" +
+    "Usage: npx @the-focus-ai/artifacts <login|logout|whoami|publish|password|remove|list|doc|token>\n" +
       "  npx @the-focus-ai/artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
-      '  npx @the-focus-ai/artifacts publish <file.html|directory> [--entry-page index.html] [--title "My Report"] [--pwa] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose] [--open]\n' +
+      '  npx @the-focus-ai/artifacts publish <file.html|directory> [--entry-page index.html] [--title "My Report"] [--pwa] [--password <password>] [--unlock-for 7d] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose] [--open]\n' +
+      "  npx @the-focus-ai/artifacts password <Publication URL> [--set <password>] [--unlock-for 7d|never] [--clear] [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts remove <Publication URL> [--yes] [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts list [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts whoami [--base-url https://artifacts.thefocus.ai]\n" +

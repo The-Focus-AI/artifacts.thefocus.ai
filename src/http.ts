@@ -33,8 +33,15 @@ export async function servePublicationNodeRequest(
   nodeResponse: ServerResponse,
   dependencies: Omit<ServePublicationInput, "request">,
 ): Promise<void> {
+  // The password gate reads the Cookie header and the posted form.
+  const body =
+    nodeRequest.method === "POST"
+      ? await readNodeRequestBody(nodeRequest)
+      : Buffer.alloc(0);
   const request = new Request(publicationRequestUrl(nodeRequest), {
     method: nodeRequest.method,
+    headers: nodeRequest.headers as HeadersInit,
+    body: body.length > 0 ? new Uint8Array(body) : undefined,
   });
   const response = await servePublicationRequest({
     request,
