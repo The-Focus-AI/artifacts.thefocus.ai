@@ -124,6 +124,7 @@ describe("CLI Publisher Token commands", () => {
       whoami: vi.fn(async () => "remote@thefocus.ai"),
       list: vi.fn(),
       remove: vi.fn(),
+      setPassword: vi.fn(),
       publish: vi.fn(),
     };
 
@@ -330,6 +331,7 @@ describe("CLI Publisher Token commands", () => {
       whoami: vi.fn(),
       list: vi.fn(),
       remove: vi.fn(),
+      setPassword: vi.fn(),
       publish: vi.fn(async (token, sourcePath, options) => ({
         opaqueId: "NewStdinPub",
         publicationUrlPath: "NewStdinPub",
@@ -371,6 +373,7 @@ describe("CLI Publisher Token commands", () => {
       whoami: vi.fn(),
       list: vi.fn(),
       remove: vi.fn(),
+      setPassword: vi.fn(),
       publish: vi.fn(async (token, sourcePath, options) => ({
         opaqueId: "NewOpenPub",
         publicationUrlPath: "NewOpenPub",

@@ -109,6 +109,7 @@ async function applyMigration(sql: MigrationSqlClient) {
     "0004_add_title.sql",
     "0005_create_living_docs.sql",
     "0008_add_publication_pwa.sql",
+    "0009_add_publication_passwords.sql",
   ]
     .map((fileName) =>
       readFileSync(join(process.cwd(), "migrations", fileName), "utf8"),

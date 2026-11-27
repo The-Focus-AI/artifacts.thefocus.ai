@@ -31,6 +31,8 @@ import {
   publishArtifactSummary,
   removePublicationFromEnvironment,
   removePublicationSummary,
+  setPublicationPassword,
+  setPublicationPasswordSummary,
   type RemovePublicationResult,
 } from "./publication.js";
 import {
@@ -98,6 +100,14 @@ export async function runCli(
       return 0;
     }
 
+    // A flag with no value parses as "true". For a password that would
+    // silently set the password to the word "true".
+    for (const flag of ["password", "set", "unlock-for"]) {
+      if (options[flag] === "true" || options[flag] === "") {
+        throw new Error(`--${flag} requires a value.`);
+      }
+    }
+
     if (command === "publish" && firstArg) {
       const token = await resolvePublisherToken({ env, configDir });
       if (!token.token) throw new Error("A valid Publisher Token is required");
@@ -125,6 +135,8 @@ export async function runCli(
             updatePublicationUrl: options.update,
             title: options["title"],
             pwa: Object.hasOwn(options, "pwa"),
+            password: options.password,
+            unlockFor: options["unlock-for"],
           })
         : dependencies.tokenStore || dependencies.metadataStore
           ? await publishArtifactFromEnvironment(sourcePath, {
@@ -136,20 +148,34 @@ export async function runCli(
               updatePublicationUrl: options.update,
               title: options["title"],
               pwa: Object.hasOwn(options, "pwa"),
+              password: options.password,
+              unlockFor: options["unlock-for"],
             })
           : await publishWithDefaultApiClient(sourcePath, token.token, {
               env,
               configDir,
+              // Every stdin publish shares one temp file, so the earlier
+              // stdin Publication may be an unrelated Artifact.
+              keepPassword: firstArg !== "-",
               publicBaseUrl: options["base-url"],
               entryPage: options["entry-page"],
               forceNew: Object.hasOwn(options, "new"),
               updatePublicationUrl: options.update,
               title: options["title"],
               pwa: Object.hasOwn(options, "pwa"),
+              password: options.password,
+              unlockFor: options["unlock-for"],
             });
       stdout.write(
         `${publishArtifactSummary(result, { verbose: options.verbose === "true" })}\n`,
       );
+      // A server from before passwords ignores --password and publishes
+      // an open URL. Fail loudly instead of reporting success.
+      if (options.password !== undefined && result.hasPassword !== true) {
+        throw new Error(
+          `${result.publicationUrl} was published WITHOUT a password: the server did not confirm it. Remove the Publication, or set the password with the password command.`,
+        );
+      }
       if (Object.hasOwn(options, "open")) {
         const openFn = dependencies.openBrowser ?? openDefaultBrowser;
         await openFn(result.publicationUrl);
@@ -203,6 +229,43 @@ export async function runCli(
       const result = await remove(firstArg);
       stdout.write(`${removePublicationSummary(result)}\n`);
       return 0;
+    }
+
+    if (command === "password" && firstArg) {
+      const clear = Object.hasOwn(options, "clear");
+      if (clear && (options.set !== undefined || options["unlock-for"])) {
+        throw new Error(
+          "--clear cannot be combined with --set or --unlock-for.",
+        );
+      }
+      const change = {
+        password: clear ? null : options.set,
+        unlockFor: options["unlock-for"],
+      };
+      if (change.password === undefined && change.unlockFor === undefined) {
+        throw new Error(
+          "password requires --set <password>, --clear, or --unlock-for <duration>.",
+        );
+      }
+      const token = await resolvePublisherToken({ env, configDir });
+      if (!token.token) throw new Error("A valid Publisher Token is required");
+      const result = dependencies.metadataStore
+        ? await (async () => {
+            await authenticatePublisherToken({
+              token: token.token,
+              store: dependencies.tokenStore ?? createNeonPublisherTokenStore(),
+            });
+            return setPublicationPassword({
+              publicationUrl: firstArg,
+              ...change,
+              metadataStore: dependencies.metadataStore!,
+            });
+          })()
+        : await (
+            dependencies.apiClient ?? defaultApiClient(env, options["base-url"])
+          ).setPassword(token.token, firstArg, change);
+      stdout.write(`${setPublicationPasswordSummary(result)}\n`);
+      return result.status === "updated" ? 0 : 1;
     }
 
     if (command === "login") {
@@ -613,6 +676,9 @@ async function publishWithDefaultApiClient(
     updatePublicationUrl?: string;
     title?: string;
     pwa?: boolean;
+    password?: string;
+    unlockFor?: string;
+    keepPassword: boolean;
   },
 ) {
   const stateStore = new FilePublicationStateStore(options.configDir);
@@ -636,6 +702,14 @@ async function publishWithDefaultApiClient(
     updatePublicationUrl,
     title: options.title,
     pwa: options.pwa,
+    password: options.password,
+    unlockFor: options.unlockFor,
+    // After the Revision Window the server creates a new Publication. It
+    // copies the password of the one this Local Source had before.
+    keepPasswordFrom:
+      updatePublicationUrl || !options.keepPassword
+        ? undefined
+        : existingState?.publicationUrl,
   });
   try {
     await stateStore.set({
@@ -664,9 +738,11 @@ function parseFlags(flags: string[]): Record<string, string | undefined> {
   for (let index = 0; index < flags.length; index += 1) {
     const flag = flags[index];
     if (!flag?.startsWith("--")) continue;
-    const [name, inlineValue] = flag.slice(2).split("=", 2);
-    if (inlineValue !== undefined) {
-      parsed[name] = inlineValue;
+    // Everything after the first "=" is the value: a password may contain "=".
+    const equals = flag.indexOf("=");
+    const name = flag.slice(2, equals < 0 ? undefined : equals);
+    if (equals >= 0) {
+      parsed[name] = flag.slice(equals + 1);
       continue;
     }
     const next = flags[index + 1];
@@ -738,9 +814,10 @@ function readStdin(stream: NodeJS.ReadableStream): Promise<string> {
 
 function printUsage(output: Pick<NodeJS.WriteStream, "write">): void {
   output.write(
-    "Usage: npx @the-focus-ai/artifacts <login|logout|whoami|publish|remove|list|doc|token>\n" +
+    "Usage: npx @the-focus-ai/artifacts <login|logout|whoami|publish|password|remove|list|doc|token>\n" +
       "  npx @the-focus-ai/artifacts login [--base-url https://artifacts.thefocus.ai]\n" +
-      '  npx @the-focus-ai/artifacts publish <file.html|directory> [--entry-page index.html] [--title "My Report"] [--pwa] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose] [--open]\n' +
+      '  npx @the-focus-ai/artifacts publish <file.html|directory> [--entry-page index.html] [--title "My Report"] [--pwa] [--password <password>] [--unlock-for 7d] [--base-url https://artifacts.thefocus.ai] [--new] [--update <Publication URL>] [--verbose] [--open]\n' +
+      "  npx @the-focus-ai/artifacts password <Publication URL> [--set <password>] [--unlock-for 7d|never] [--clear] [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts remove <Publication URL> [--yes] [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts list [--base-url https://artifacts.thefocus.ai]\n" +
       "  npx @the-focus-ai/artifacts whoami [--base-url https://artifacts.thefocus.ai]\n" +

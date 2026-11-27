@@ -72,6 +72,44 @@ Publisher Tokens are issued only to verified emails ending exactly in `@thefocus
 
 Normal npm CLI usage only needs a Publisher Token. Infrastructure secrets such as `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN` are required only for local development of the server/Vercel functions or deployed server-side API routes; publishers and agents running `npx @the-focus-ai/artifacts ...` should not set those secrets locally.
 
+### Password-protect a Publication
+
+A Publication is unlisted: anyone who has the URL can open it. Add a password when the URL alone should not be enough. See [docs/adr/0010-publication-passwords.md](docs/adr/0010-publication-passwords.md).
+
+```bash
+npx @the-focus-ai/artifacts publish ./report.html --password "open-sesame"
+npx @the-focus-ai/artifacts publish ./report.html --password "open-sesame" --unlock-for 7d
+npx @the-focus-ai/artifacts password https://artifacts.thefocus.ai/a/Ab3xY9kQ --set "new-password"
+npx @the-focus-ai/artifacts password https://artifacts.thefocus.ai/a/Ab3xY9kQ --unlock-for 12h
+npx @the-focus-ai/artifacts password https://artifacts.thefocus.ai/a/Ab3xY9kQ --clear
+```
+
+| Flag                      | Command               | What it does                                                                                                                                                                             |
+| ------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--password <password>`   | `publish`             | Sets or replaces the password, 4 to 200 characters. Omit it on a later publish to keep the current password. `publish` prints `Password required to open.` when the Publication has one. |
+| `--unlock-for <duration>` | `publish`, `password` | Limits how long a viewer stays unlocked: `30m`, `12h`, `7d`. `never` removes the limit. The default is no limit.                                                                         |
+| `--set <password>`        | `password`            | Sets or replaces the password on an existing Publication.                                                                                                                                |
+| `--clear`                 | `password`            | Removes the password and the unlock limit. The Publication goes back to unlisted.                                                                                                        |
+
+What a viewer sees:
+
+- The Publication URL shows a password page until the viewer enters the password. The page shows no Title, link card or Artifact content. Its only label is the domain that served it, so it reads the same on every domain that serves Publications.
+- The password covers every Artifact Path of a directory Artifact, not only the Entry Page.
+- A correct password sets one cookie for that Publication. With no `--unlock-for`, the viewer stays unlocked until the password changes or 400 days pass, the longest a browser keeps a cookie. `--unlock-for` takes at most `400d`.
+- Changing or clearing the password ends every existing unlock.
+- One address can try ten passwords per minute on one Publication. Further tries in that minute are refused, including the correct password.
+
+Limits:
+
+- PWA Publications (`--pwa`) cannot have a password.
+- A Local Source keeps its password. After the Revision Window, publishing the same Local Source creates a new Publication URL with the same password and unlock limit, and `publish` prints `Password required to open.` Pass `--password` to change it; the unlock limit stays unless you pass `--unlock-for`. `publish --new` creates a Publication with no password. The CLI finds the earlier Publication in its Local State, and the server copies the password only from your own Publication of the same Local Source. A publish from another computer, through MCP, or from stdin (`publish -`) starts with no password.
+- `publish --password` exits 1 when the server does not confirm the password, and names the URL it published.
+- `--password` puts the password in your shell history. Send the password to viewers separately from the URL.
+- Any Publisher can set or clear the password on any Publication, the same as Removal.
+- Living Docs have no passwords.
+
+Passwords require `migrations/0009_add_publication_passwords.sql`. MCP: `publish_artifact` and `update_artifact` take `password` and `unlockFor`, and `set_artifact_password` sets or clears one.
+
 Remove a Publication with an interactive confirmation, or pass `--yes` for non-interactive scripted Removal:
 
 ```bash
@@ -88,12 +126,14 @@ THEFOCUS_ARTIFACTS_TOKEN=tfai_pub_... \
 fnox exec -- pnpm artifacts publish ./dist
 ```
 
-Use `--entry-page path/to/page.html` to choose a different HTML Entry Page inside a directory Artifact. Use `--title "Report Name"` to set a human-readable title (shown in `list`). Use `--new` to force a fresh Publication during the Revision Window, or `--update <Publication URL>` to intentionally update an older active Publication URL.
+Use `--entry-page path/to/page.html` to choose a different HTML Entry Page inside a directory Artifact. Use `--title "Report Name"` to set a human-readable title (shown in `list`). Use `--new` to force a fresh Publication during the Revision Window, or `--update <Publication URL>` to intentionally update an older active Publication URL. Use `--password <password>` to require a password before the Publication opens.
 
 Other CLI management commands:
 
 ```bash
 pnpm artifacts list
+pnpm artifacts password https://artifacts.thefocus.ai/a/Ab3xY9kQ --set "open-sesame"
+pnpm artifacts password https://artifacts.thefocus.ai/a/Ab3xY9kQ --clear
 pnpm artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ
 pnpm artifacts remove https://artifacts.thefocus.ai/a/Ab3xY9kQ --yes
 pnpm artifacts logout
@@ -193,7 +233,7 @@ claude mcp add --transport http artifacts https://artifacts.thefocus.ai/mcp \
   --header "Authorization: Bearer tfai_mcp_..."
 ```
 
-Tools: `publish_artifact`, `update_artifact`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`.
+Tools: `publish_artifact`, `update_artifact`, `set_artifact_password`, `remove_artifact`, `list_artifacts`, `publish_doc`, `pull_doc`, `respond_doc`, `remove_doc`, `list_docs`, `whoami`.
 
 Two differences from the CLI, both because the endpoint cannot read your filesystem:
 

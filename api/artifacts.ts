@@ -13,6 +13,7 @@ import {
   defaultPublicBaseUrl,
   publishUploadedArtifact,
   removePublication,
+  setPublicationPassword,
   type PreparedArtifactUpload,
 } from "../src/publication.js";
 import { InMemoryPublicationStateStore } from "../src/local-config.js";
@@ -54,8 +55,14 @@ export async function handleArtifactsApiRequest(
     }
 
     if (request.method === "GET" && action === "list") {
+      const publications =
+        await metadataStore.listByPublisherEmail(publisherEmail);
+      // The password hash stays on the server. Clients get hasPassword.
       return json({
-        publications: await metadataStore.listByPublisherEmail(publisherEmail),
+        publications: publications.map(({ passwordHash, ...publication }) => ({
+          ...publication,
+          hasPassword: passwordHash !== null,
+        })),
       });
     }
 
@@ -124,6 +131,24 @@ export async function handleArtifactsApiRequest(
       );
     }
 
+    if (request.method === "POST" && action === "password") {
+      const body = (await request.json()) as {
+        publicationUrl?: string;
+        password?: string | null;
+        unlockFor?: string;
+      };
+      if (!body.publicationUrl)
+        return json({ error: "publicationUrl is required" }, 400);
+      return json(
+        await setPublicationPassword({
+          publicationUrl: body.publicationUrl,
+          password: body.password,
+          unlockFor: body.unlockFor,
+          metadataStore,
+        }),
+      );
+    }
+
     if (request.method === "POST" && action === "publish") {
       const { upload, options } = await uploadFromFormData(
         await request.formData(),
@@ -140,6 +165,9 @@ export async function handleArtifactsApiRequest(
           updatePublicationUrl: options.updatePublicationUrl,
           title: options.title,
           pwa: options.pwa,
+          password: options.password,
+          unlockFor: options.unlockFor,
+          keepPasswordFrom: options.keepPasswordFrom,
         }),
       );
     }
@@ -161,6 +189,9 @@ async function uploadFromFormData(form: FormData): Promise<{
     updatePublicationUrl?: string;
     title?: string;
     pwa?: boolean;
+    password?: string;
+    unlockFor?: string;
+    keepPasswordFrom?: string;
   };
 }> {
   const metadataValue = form.get("metadata");
@@ -177,6 +208,9 @@ async function uploadFromFormData(form: FormData): Promise<{
     updatePublicationUrl?: string;
     title?: string;
     pwa?: boolean;
+    password?: string;
+    unlockFor?: string;
+    keepPasswordFrom?: string;
   };
   const artifactPaths = form.getAll("artifactPaths").filter(isString);
   const blobs = form.getAll("files").filter(isFile);
@@ -203,6 +237,9 @@ async function uploadFromFormData(form: FormData): Promise<{
       updatePublicationUrl: metadata.updatePublicationUrl,
       title: metadata.title,
       pwa: metadata.pwa,
+      password: metadata.password,
+      unlockFor: metadata.unlockFor,
+      keepPasswordFrom: metadata.keepPasswordFrom,
     },
   };
 }

@@ -25,6 +25,7 @@ import {
 } from "./storage/artifact-content.js";
 import {
   createNeonPublicationMetadataStore,
+  type PublicationMetadata,
   type PublicationMetadataStore,
 } from "./storage/publication-metadata.js";
 import {
@@ -58,6 +59,16 @@ const maxTotalArtifactBytes = 100 * 1024 * 1024;
 const maxArtifactFileCount = 1_000;
 
 export { extractHtmlTitle } from "./open-graph.js";
+import {
+  hashPassword,
+  isUnlocked,
+  parseUnlockFor,
+  passwordPage,
+  unlockCookie,
+  unlockAttemptLimit,
+  unlockAttemptWindowMs,
+  verifyPassword,
+} from "./password-gate.js";
 
 export interface PublishSingleFileArtifactInput {
   filePath: string;
@@ -168,6 +179,16 @@ export interface PublishArtifactInput {
   now?: () => Date;
   title?: string;
   pwa?: boolean;
+  /** Sets or replaces the Publication password. Omitted = unchanged. */
+  password?: string;
+  /**
+   * The Publication URL this Local Source was published at before. A new
+   * Publication created without `password` copies that one's password.
+   * Ignored with `forceNew`.
+   */
+  keepPasswordFrom?: string;
+  /** How long an unlock lasts (`12h`, `7d`, `never`). Omitted = unchanged. */
+  unlockFor?: string;
 }
 
 export interface PublishArtifactResult {
@@ -179,6 +200,11 @@ export interface PublishArtifactResult {
   revisionWindowExpiresAt: Date;
   decision: PublishArtifactDecision;
   artifactPaths: string[];
+  /**
+   * Whether the Publication requires a password after this publish. Absent
+   * when an API server from before Publication Passwords answered.
+   */
+  hasPassword?: boolean;
 }
 
 export interface RemovePublicationInput {
@@ -233,6 +259,16 @@ export interface PublishUploadedArtifactInput {
   now?: () => Date;
   title?: string;
   pwa?: boolean;
+  /** Sets or replaces the Publication password. Omitted = unchanged. */
+  password?: string;
+  /**
+   * The Publication URL this Local Source was published at before. A new
+   * Publication created without `password` copies that one's password.
+   * Ignored with `forceNew`.
+   */
+  keepPasswordFrom?: string;
+  /** How long an unlock lasts (`12h`, `7d`, `never`). Omitted = unchanged. */
+  unlockFor?: string;
 }
 
 interface DirectoryArtifactManifest {
@@ -391,6 +427,7 @@ export async function publishArtifact(
         packaged,
         revisionWindowExpiresAt,
         decision: "created-after-expiry",
+        previousOpaqueId: existingState.opaqueId,
       });
     }
     return createFreshPublication({
@@ -399,6 +436,7 @@ export async function publishArtifact(
       packaged,
       revisionWindowExpiresAt,
       decision: "created-after-removed-local-state",
+      previousOpaqueId: existingState.opaqueId,
     });
   }
 
@@ -422,11 +460,14 @@ export async function servePublicationRequest({
   metadataStore,
   contentStore,
 }: ServePublicationInput): Promise<Response> {
-  if (request.method !== "GET" && request.method !== "HEAD") {
-    return new Response("Method not allowed", {
-      status: 405,
-      headers: publicationSafetyHeaders(),
-    });
+  // POST is the password form. It is refused below unless the Publication
+  // has a password.
+  if (
+    request.method !== "GET" &&
+    request.method !== "HEAD" &&
+    request.method !== "POST"
+  ) {
+    return methodNotAllowed();
   }
 
   const route = publicationRouteFromUrl(request.url);
@@ -450,6 +491,18 @@ export async function servePublicationRequest({
       status: 404,
       headers: notFoundHeaders,
     });
+  }
+
+  if (publication.passwordHash !== null) {
+    const gate = await passwordGateResponse({
+      request,
+      route,
+      publication: { ...publication, passwordHash: publication.passwordHash },
+      metadataStore,
+    });
+    if (gate) return gate;
+  } else if (request.method === "POST") {
+    return methodNotAllowed();
   }
 
   const activeContent = await contentStore.read(
@@ -485,6 +538,10 @@ export async function servePublicationRequest({
     { "content-type": contentType },
     { pwa: route.pwa, artifactPath: route.artifactPath },
   );
+  // Content behind a password is never stored by a browser or a cache.
+  if (publication.passwordHash !== null) {
+    headers.set("cache-control", "no-store");
+  }
   const body =
     isEntryPagePath(route.artifactPath) && isHtmlContentType(contentType)
       ? Buffer.from(
@@ -498,6 +555,232 @@ export async function servePublicationRequest({
     status: 200,
     headers,
   });
+}
+
+function methodNotAllowed(): Response {
+  return new Response("Method not allowed", {
+    status: 405,
+    headers: publicationSafetyHeaders(),
+  });
+}
+
+/**
+ * The password gate. It covers every Artifact Path, not only the Entry Page.
+ * Returns the response to send, or null when the request carries a valid
+ * unlock cookie and the Artifact can be served.
+ */
+async function passwordGateResponse(input: {
+  request: Request;
+  route: { opaqueId: string; pwa: boolean };
+  publication: PublicationMetadata & { passwordHash: string };
+  metadataStore: PublicationMetadataStore;
+}): Promise<Response | null> {
+  const { request, publication } = input;
+  const { opaqueId, passwordHash, unlockTtlMs } = publication;
+  const gatePage = (status: number, error: string | null) =>
+    new Response(
+      request.method === "HEAD"
+        ? null
+        : passwordPage(error, new URL(request.url).hostname),
+      {
+        status,
+        headers: publicationSafetyHeaders({
+          "content-type": "text/html; charset=utf-8",
+        }),
+      },
+    );
+
+  if (request.method === "POST") {
+    // A form on another site must not spend the viewer's attempts. Browsers
+    // mark such a POST themselves; a page cannot change this header.
+    if (request.headers.get("sec-fetch-site") === "cross-site") {
+      return gatePage(403, "Enter the password on this page.");
+    }
+    const limitKey = `${opaqueId}:${clientAddress(request)}`;
+    const tooManyAttempts = () =>
+      gatePage(429, "Too many attempts. Wait a minute, then try again.");
+    // Record first, then count, so parallel guesses cannot all slip under
+    // the limit. Every POST counts, including a correct password.
+    await input.metadataStore.recordUnlockAttempt(limitKey);
+    const attempts = await input.metadataStore.countUnlockAttempts(
+      limitKey,
+      new Date(Date.now() - unlockAttemptWindowMs),
+    );
+    if (attempts > unlockAttemptLimit) return tooManyAttempts();
+    const form = await request.formData().catch(() => null);
+    const candidate = form?.get("password");
+    if (
+      typeof candidate === "string" &&
+      candidate !== "" &&
+      (await verifyPassword(candidate, passwordHash))
+    ) {
+      const url = new URL(request.url);
+      return new Response(null, {
+        status: 303,
+        headers: publicationSafetyHeaders({
+          location: unlockRedirectPath(request),
+          "set-cookie": unlockCookie({
+            opaqueId,
+            passwordHash,
+            unlockTtlMs,
+            path: input.route.pwa ? "/" : publication.publicationUrlPath,
+            secure: url.protocol === "https:",
+          }),
+        }),
+      });
+    }
+    return gatePage(401, "That password is not right.");
+  }
+
+  const unlocked = isUnlocked({
+    cookieHeader: request.headers.get("cookie"),
+    opaqueId,
+    passwordHash,
+    unlockTtlMs,
+  });
+  return unlocked ? null : gatePage(401, null);
+}
+
+function clientAddress(request: Request): string {
+  return (
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+  );
+}
+
+// After a correct password the browser goes back to the page it posted
+// from. The rewritten request loses a trailing slash (/a/{id}/ arrives as
+// /a/{id}), and ./relative links only resolve from the slash form, so the
+// Referer may put that one slash back. Nothing else from the Referer is used.
+//
+// A Location that starts with two slashes names another host, so the path
+// is reduced to one leading slash first.
+function unlockRedirectPath(request: Request): string {
+  const url = new URL(request.url);
+  const pathname = url.pathname.replace(/^\/{2,}/, "/");
+  const referer = request.headers.get("referer");
+  if (referer && URL.canParse(referer)) {
+    const from = new URL(referer);
+    if (from.host === url.host && from.pathname === `${pathname}/`) {
+      return from.pathname;
+    }
+  }
+  return pathname;
+}
+
+function earlierOpaqueIdFromUrl(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return opaqueIdFromPublicationUrl(url);
+  } catch {
+    throw new Error("keepPasswordFrom must be a Publication URL.");
+  }
+}
+
+async function passwordProtectionFields(
+  input: { password?: string; unlockFor?: string },
+  publication: { pwa: boolean; hasPassword: boolean },
+): Promise<{ passwordHash?: string; unlockTtlMs?: number | null }> {
+  if (
+    publication.pwa &&
+    (input.password !== undefined || publication.hasPassword)
+  ) {
+    throw new Error(pwaPasswordMessage);
+  }
+  const unlockTtlMs = parseUnlockFor(input.unlockFor);
+  if (
+    unlockTtlMs !== undefined &&
+    input.password === undefined &&
+    !publication.hasPassword
+  ) {
+    throw new Error("--unlock-for needs a password. Pass --password too.");
+  }
+  return {
+    ...(input.password !== undefined
+      ? { passwordHash: await hashPassword(input.password) }
+      : {}),
+    ...(unlockTtlMs !== undefined ? { unlockTtlMs } : {}),
+  };
+}
+
+const pwaPasswordMessage =
+  "PWA Publications cannot have a password. Publish without --pwa, or clear the password first.";
+
+export interface SetPublicationPasswordInput {
+  publicationUrl: string;
+  /** A string sets or replaces the password. null clears it. undefined leaves it. */
+  password?: string | null;
+  /** `12h`, `7d` limits how long an unlock lasts. `never` removes the limit. undefined leaves it. */
+  unlockFor?: string;
+  metadataStore: PublicationMetadataStore;
+}
+
+export interface SetPublicationPasswordResult {
+  opaqueId: string;
+  publicationUrl: string;
+  status: "updated" | "not-found";
+  hasPassword: boolean;
+  unlockTtlMs: number | null;
+}
+
+/**
+ * Sets, replaces or clears a Publication's password. Like Removal, this is
+ * team-wide: the caller has already authenticated a Publisher, and any
+ * Publisher may change any Publication's password. A changed or cleared
+ * password ends every existing unlock.
+ */
+export async function setPublicationPassword(
+  input: SetPublicationPasswordInput,
+): Promise<SetPublicationPasswordResult> {
+  const opaqueId = opaqueIdFromPublicationUrl(input.publicationUrl);
+  if (!opaqueId) throw new Error("password requires a Publication URL.");
+  if (input.password === undefined && input.unlockFor === undefined) {
+    throw new Error("Provide a password, --clear, or --unlock-for.");
+  }
+
+  const publication = await input.metadataStore.getByOpaqueId(opaqueId);
+  if (!publication || publication.status !== "active") {
+    return {
+      opaqueId,
+      publicationUrl: input.publicationUrl,
+      status: "not-found",
+      hasPassword: false,
+      unlockTtlMs: null,
+    };
+  }
+
+  const fields =
+    input.password === null
+      ? { passwordHash: null, unlockTtlMs: null }
+      : await passwordProtectionFields(
+          { password: input.password, unlockFor: input.unlockFor },
+          {
+            pwa: publication.pwa,
+            hasPassword: publication.passwordHash !== null,
+          },
+        );
+  const updated = await input.metadataStore.update(opaqueId, fields);
+  if (!updated) throw new Error("Publication password cannot be changed.");
+  return {
+    opaqueId,
+    publicationUrl: input.publicationUrl,
+    status: "updated",
+    hasPassword: updated.passwordHash !== null,
+    unlockTtlMs: updated.unlockTtlMs,
+  };
+}
+
+export function setPublicationPasswordSummary(
+  result: Pick<
+    SetPublicationPasswordResult,
+    "publicationUrl" | "status" | "hasPassword"
+  >,
+): string {
+  if (result.status === "not-found") {
+    return `Publication not found or already removed: ${result.publicationUrl}`;
+  }
+  return result.hasPassword
+    ? `Password set on ${result.publicationUrl}`
+    : `Password cleared on ${result.publicationUrl}`;
 }
 
 function isEntryPagePath(artifactPath: string): boolean {
@@ -620,6 +903,8 @@ export async function publishArtifactFromEnvironment(
     updatePublicationUrl?: string;
     title?: string;
     pwa?: boolean;
+    password?: string;
+    unlockFor?: string;
   } = {},
 ): Promise<PublishArtifactResult> {
   const env = options.env ?? process.env;
@@ -647,6 +932,8 @@ export async function publishArtifactFromEnvironment(
     updatePublicationUrl: options.updatePublicationUrl,
     title: options.title,
     pwa: options.pwa,
+    password: options.password,
+    unlockFor: options.unlockFor,
   });
 }
 
@@ -881,6 +1168,9 @@ export async function publishUploadedArtifact(
     updatePublicationUrl: input.updatePublicationUrl,
     title: input.title,
     pwa: input.pwa,
+    password: input.password,
+    unlockFor: input.unlockFor,
+    keepPasswordFrom: input.keepPasswordFrom,
   } satisfies PublishArtifactInput;
 
   const result = input.updatePublicationUrl
@@ -1017,6 +1307,7 @@ export function publishArtifactSummary(
     revisionWindowExpiresAt?: Date;
     decision?: PublishArtifactDecision;
     excludedArtifactPaths?: string[];
+    hasPassword?: boolean;
   },
   options: { verbose?: boolean } = {},
 ): string {
@@ -1027,6 +1318,7 @@ export function publishArtifactSummary(
   const lines = [
     `${action} ${basename(result.publicationUrlPath)} to ${result.publicationUrl}${suffix}`,
   ];
+  if (result.hasPassword) lines.push("Password required to open.");
   const excluded = result.excludedArtifactPaths ?? [];
   if (excluded.length > 0) {
     lines.push(
@@ -1114,11 +1406,13 @@ async function publishUploadedArtifactByState(
       return createFreshPublication({
         ...input,
         decision: "created-after-expiry",
+        previousOpaqueId: existingState.opaqueId,
       });
     }
     return createFreshPublication({
       ...input,
       decision: "created-after-removed-local-state",
+      previousOpaqueId: existingState.opaqueId,
     });
   }
 
@@ -1136,8 +1430,45 @@ async function createFreshPublication(
     };
     revisionWindowExpiresAt: Date;
     decision: PublishArtifactDecision;
+    previousOpaqueId?: string;
   },
 ): Promise<PublishArtifactResult> {
+  // A Local Source that had a password keeps it, and its unlock limit, at
+  // its new Publication URL. Only the same Publisher's earlier Publication
+  // of the same Local Source counts. --password and --unlock-for replace
+  // what was kept.
+  const previousOpaqueId = input.forceNew
+    ? null
+    : (input.previousOpaqueId ??
+      earlierOpaqueIdFromUrl(input.keepPasswordFrom));
+  const found = previousOpaqueId
+    ? await input.metadataStore.getByOpaqueId(previousOpaqueId)
+    : null;
+  const previous =
+    found &&
+    found.passwordHash !== null &&
+    found.publisherEmail === input.publisherEmail &&
+    found.localSourcePath === input.localSourcePath
+      ? found
+      : null;
+  if (previous && input.pwa) {
+    throw new Error(
+      "The earlier Publication of this Local Source has a password, and PWA Publications cannot have one. Publish with --new --pwa.",
+    );
+  }
+  // Before the upload, so a rejected password leaves nothing in Blob storage.
+  const protection = {
+    ...(previous
+      ? {
+          passwordHash: previous.passwordHash,
+          unlockTtlMs: previous.unlockTtlMs,
+        }
+      : {}),
+    ...(await passwordProtectionFields(input, {
+      pwa: input.pwa ?? false,
+      hasPassword: previous !== null,
+    })),
+  };
   const opaqueId = input.opaqueIdFactory?.() ?? createOpaqueId();
   const packaged = await input.packaged.writeForPublication(opaqueId);
   const title = input.title ?? packaged.derivedTitle ?? null;
@@ -1155,6 +1486,7 @@ async function createFreshPublication(
     revisionWindowExpiresAt: input.revisionWindowExpiresAt,
     title,
     pwa: input.pwa ?? false,
+    ...protection,
   });
   const publicationUrl = publicationShareUrl(input.publicBaseUrl, {
     opaqueId,
@@ -1176,6 +1508,7 @@ async function createFreshPublication(
     revisionWindowExpiresAt: input.revisionWindowExpiresAt,
     decision: input.decision,
     artifactPaths: packaged.artifactPaths,
+    hasPassword: publication.passwordHash !== null,
   };
 }
 
@@ -1200,8 +1533,13 @@ async function updateExistingPublication(
     existing.activeArtifactLocator,
     input.contentStore,
   );
-  const packaged = await input.packaged.writeForPublication(input.opaqueId);
   const pwa = input.pwa === true || existing.pwa;
+  // Before the upload, so a rejected password leaves nothing in Blob storage.
+  const protection = await passwordProtectionFields(input, {
+    pwa,
+    hasPassword: existing.passwordHash !== null,
+  });
+  const packaged = await input.packaged.writeForPublication(input.opaqueId);
   if (pwa && !isDnsSafeOpaqueId(input.opaqueId)) {
     throw new Error(
       "This Publication's id cannot be a DNS label. Publish --new --pwa to create a PWA at a wildcard host.",
@@ -1217,6 +1555,7 @@ async function updateExistingPublication(
     revisionWindowExpiresAt: input.revisionWindowExpiresAt,
     ...(title !== undefined ? { title } : {}),
     pwa,
+    ...protection,
   });
   if (!publication) throw new Error("Publication URL cannot be updated.");
   await input.contentStore.delete(oldLocators);
@@ -1240,6 +1579,7 @@ async function updateExistingPublication(
     revisionWindowExpiresAt: input.revisionWindowExpiresAt,
     decision: input.decision,
     artifactPaths: packaged.artifactPaths,
+    hasPassword: publication.passwordHash !== null,
   };
 }
 

@@ -1,0 +1,1079 @@
+import { mkdtemp, mkdir, realpath, writeFile } from "node:fs/promises";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { PassThrough, Readable } from "node:stream";
+
+import { describe, expect, it, vi } from "vitest";
+
+import { runCli } from "../src/cli.js";
+import { servePublicationNodeRequest } from "../src/http.js";
+import {
+  artifactsMcpTools,
+  InMemoryArtifactContentStore,
+  InMemoryPublicationMetadataStore,
+  InMemoryPublicationStateStore,
+  PostgresPublicationMetadataStore,
+  prepareArtifactUpload,
+  publishArtifact,
+  publishUploadedArtifact,
+  servePublicationRequest,
+  setPublicationPassword,
+  type McpToolContext,
+} from "../src/index.js";
+import { FilePublicationStateStore } from "../src/local-config.js";
+import { isUnlocked, unlockCookie } from "../src/password-gate.js";
+
+const secretBody = "<title>Q3 board numbers</title><h1>secret revenue</h1>";
+
+async function publishProtected(
+  options: {
+    password?: string;
+    unlockFor?: string;
+    directory?: boolean;
+  } = {},
+) {
+  const dir = await mkdtemp(join(tmpdir(), "artifacts-password-"));
+  let sourcePath = join(dir, "report.html");
+  if (options.directory) {
+    sourcePath = join(dir, "site");
+    await mkdir(join(sourcePath, "assets"), { recursive: true });
+    await writeFile(join(sourcePath, "index.html"), secretBody);
+    await writeFile(join(sourcePath, "assets", "data.json"), '{"secret":1}');
+  } else {
+    await writeFile(sourcePath, secretBody);
+  }
+  const stores = {
+    metadataStore: new InMemoryPublicationMetadataStore(),
+    contentStore: new InMemoryArtifactContentStore(),
+    stateStore: new InMemoryPublicationStateStore(),
+  };
+  const publishInput = {
+    sourcePath,
+    publisherEmail: "publisher@thefocus.ai",
+    publicBaseUrl: "https://artifacts.thefocus.ai",
+    ...stores,
+    opaqueIdFactory: () => "Locked01",
+  };
+  const published = await publishArtifact({
+    ...publishInput,
+    password: "password" in options ? options.password : "open-sesame",
+    unlockFor: options.unlockFor,
+  });
+  return { ...stores, published, publishInput, sourcePath };
+}
+
+type Stores = Pick<
+  Awaited<ReturnType<typeof publishProtected>>,
+  "metadataStore" | "contentStore"
+>;
+
+function get(stores: Stores, url: string, cookie?: string) {
+  return servePublicationRequest({
+    request: new Request(url, { headers: cookie ? { cookie } : {} }),
+    metadataStore: stores.metadataStore,
+    contentStore: stores.contentStore,
+  });
+}
+
+function post(
+  stores: Stores,
+  url: string,
+  password: string,
+  headers: Record<string, string> = {},
+) {
+  return servePublicationRequest({
+    request: new Request(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        ...headers,
+      },
+      body: new URLSearchParams({ password }).toString(),
+    }),
+    metadataStore: stores.metadataStore,
+    contentStore: stores.contentStore,
+  });
+}
+
+function cookieFrom(response: Response): string {
+  return response.headers.get("set-cookie")!.split(";")[0]!;
+}
+
+const url = "https://artifacts.thefocus.ai/a/Locked01";
+
+describe("Publication passwords", () => {
+  it("serves the password page instead of the Artifact, with nothing from the Publication on it", async () => {
+    const stores = await publishProtected();
+
+    const response = await get(stores, url);
+    const body = await response.text();
+
+    expect(response.status).toBe(401);
+    expect(body).toContain('type="password"');
+    expect(body).not.toContain("secret revenue");
+    expect(body).not.toContain("Q3 board numbers");
+    expect(body).not.toContain("og:");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+  });
+
+  it("gates every Artifact Path of a directory Artifact, not only the Entry Page", async () => {
+    const stores = await publishProtected({ directory: true });
+
+    const locked = await get(stores, `${url}/assets/data.json`);
+    expect(locked.status).toBe(401);
+    expect(await locked.text()).not.toContain("secret");
+
+    const unlock = await post(stores, url, "open-sesame");
+    const opened = await get(
+      stores,
+      `${url}/assets/data.json`,
+      cookieFrom(unlock),
+    );
+    expect(opened.status).toBe(200);
+    expect(await opened.text()).toBe('{"secret":1}');
+  });
+
+  it("rejects a wrong password and unlocks with the right one", async () => {
+    const stores = await publishProtected();
+
+    const wrong = await post(stores, url, "open-sesame-2");
+    expect(wrong.status).toBe(401);
+    expect(wrong.headers.get("set-cookie")).toBeNull();
+    expect(await wrong.text()).toContain("That password is not right.");
+
+    const right = await post(stores, url, "open-sesame");
+    expect(right.status).toBe(303);
+    expect(right.headers.get("location")).toBe("/a/Locked01");
+    const setCookie = right.headers.get("set-cookie")!;
+    expect(setCookie).toContain("Path=/a/Locked01");
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("Secure");
+
+    const opened = await get(stores, url, cookieFrom(right));
+    expect(opened.status).toBe(200);
+    expect(await opened.text()).toContain("secret revenue");
+  });
+
+  it("redirects back to the trailing-slash URL the form was posted from", async () => {
+    const stores = await publishProtected();
+
+    const fromSlash = await post(stores, url, "open-sesame", {
+      referer: `${url}/`,
+    });
+    expect(fromSlash.headers.get("location")).toBe("/a/Locked01/");
+
+    const fromElsewhere = await post(stores, url, "open-sesame", {
+      referer: "https://evil.example/a/Locked01/",
+    });
+    expect(fromElsewhere.headers.get("location")).toBe("/a/Locked01");
+  });
+
+  it("rejects a forged or tampered unlock cookie", async () => {
+    const stores = await publishProtected();
+    const right = await post(stores, url, "open-sesame");
+    const [name, value] = cookieFrom(right).split("=");
+
+    const forged = await get(stores, url, `${name}=${Date.now()}.not-a-sig`);
+    expect(forged.status).toBe(401);
+
+    const [issuedAt, signature] = value!.split(".");
+    const tampered = await get(
+      stores,
+      url,
+      `${name}=${Number(issuedAt) + 1}.${signature}`,
+    );
+    expect(tampered.status).toBe(401);
+  });
+
+  it("ends existing unlocks when the password changes, and opens to everyone when it is cleared", async () => {
+    const stores = await publishProtected();
+    const cookie = cookieFrom(await post(stores, url, "open-sesame"));
+    expect((await get(stores, url, cookie)).status).toBe(200);
+
+    const changed = await setPublicationPassword({
+      publicationUrl: url,
+      password: "new-password",
+      metadataStore: stores.metadataStore,
+    });
+    expect(changed).toMatchObject({ status: "updated", hasPassword: true });
+    expect((await get(stores, url, cookie)).status).toBe(401);
+    expect((await post(stores, url, "open-sesame")).status).toBe(401);
+    expect((await post(stores, url, "new-password")).status).toBe(303);
+
+    const cleared = await setPublicationPassword({
+      publicationUrl: url,
+      password: null,
+      metadataStore: stores.metadataStore,
+    });
+    expect(cleared).toMatchObject({ status: "updated", hasPassword: false });
+    expect((await get(stores, url)).status).toBe(200);
+  });
+
+  it("expires an unlock after --unlock-for and sets the cookie lifetime to match", async () => {
+    const stores = await publishProtected({ unlockFor: "12h" });
+    const publication = await stores.metadataStore.getByOpaqueId("Locked01");
+    expect(publication!.unlockTtlMs).toBe(12 * 60 * 60 * 1000);
+
+    const right = await post(stores, url, "open-sesame");
+    expect(right.headers.get("set-cookie")).toContain("Max-Age=43200");
+
+    const issued = new Date("2026-11-26T00:00:00.000Z");
+    const header = unlockCookie({
+      opaqueId: "Locked01",
+      passwordHash: publication!.passwordHash!,
+      unlockTtlMs: publication!.unlockTtlMs,
+      path: "/a/Locked01",
+      secure: true,
+      now: issued,
+    }).split(";")[0]!;
+    const check = (now: string) =>
+      isUnlocked({
+        cookieHeader: header,
+        opaqueId: "Locked01",
+        passwordHash: publication!.passwordHash!,
+        unlockTtlMs: publication!.unlockTtlMs,
+        now: new Date(now),
+      });
+    expect(check("2026-11-26T11:59:00.000Z")).toBe(true);
+    expect(check("2026-11-26T12:01:00.000Z")).toBe(false);
+  });
+
+  it("allows one client address ten password attempts a minute, then refuses even the right password", async () => {
+    const stores = await publishProtected();
+    const attacker = { "x-forwarded-for": "203.0.113.9, 10.0.0.1" };
+
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+      expect((await post(stores, url, "guess", attacker)).status).toBe(401);
+    }
+    const eleventh = await post(stores, url, "guess", attacker);
+    expect(eleventh.status).toBe(429);
+    expect(await eleventh.text()).toContain("Too many attempts");
+
+    const lockedOut = await post(stores, url, "open-sesame", attacker);
+    expect(lockedOut.status).toBe(429);
+    expect(lockedOut.headers.get("set-cookie")).toBeNull();
+
+    const otherAddress = await post(stores, url, "open-sesame", {
+      "x-forwarded-for": "198.51.100.4",
+    });
+    expect(otherAddress.status).toBe(303);
+  });
+
+  it("counts parallel guesses against the limit before checking any of them", async () => {
+    const stores = await publishProtected();
+    const attacker = { "x-forwarded-for": "203.0.113.9" };
+
+    const responses = await Promise.all(
+      Array.from({ length: 30 }, (_, index) =>
+        post(stores, url, index === 29 ? "open-sesame" : "guess", attacker),
+      ),
+    );
+
+    const checked = responses.filter((response) => response.status !== 429);
+    expect(checked.length).toBeLessThanOrEqual(10);
+  });
+
+  it("rejects a bad password or unlock limit before anything is uploaded", async () => {
+    const stores = await publishProtected({ password: undefined });
+    const write = vi.spyOn(stores.contentStore, "write");
+
+    await expect(
+      publishArtifact({
+        ...stores.publishInput,
+        forceNew: true,
+        password: "abc",
+      }),
+    ).rejects.toThrow("Password must be 4 to 200 characters.");
+    await expect(
+      publishArtifact({
+        ...stores.publishInput,
+        updatePublicationUrl: url,
+        password: "open-sesame",
+        unlockFor: "soon",
+      }),
+    ).rejects.toThrow("--unlock-for takes a duration");
+
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("keeps refusing POST on a Publication with no password", async () => {
+    const stores = await publishProtected({ password: undefined });
+
+    expect((await get(stores, url)).status).toBe(200);
+    expect((await post(stores, url, "anything")).status).toBe(405);
+  });
+
+  it("keeps the password when the Publication is updated without one", async () => {
+    const stores = await publishProtected();
+
+    await writeFile(stores.sourcePath, "<h1>second version</h1>");
+    const updated = await publishArtifact(stores.publishInput);
+    expect(updated.decision).toBe("updated");
+
+    expect((await get(stores, url)).status).toBe(401);
+    const cookie = cookieFrom(await post(stores, url, "open-sesame"));
+    expect(await (await get(stores, url, cookie)).text()).toContain(
+      "second version",
+    );
+  });
+
+  it("refuses a password on a PWA Publication, a short password, and --unlock-for without a password", async () => {
+    await expect(publishProtected({ password: "abc" })).rejects.toThrow(
+      "Password must be 4 to 200 characters.",
+    );
+    await expect(
+      publishProtected({ password: undefined, unlockFor: "7d" }),
+    ).rejects.toThrow("--unlock-for needs a password");
+    await expect(publishProtected({ unlockFor: "soon" })).rejects.toThrow(
+      "--unlock-for takes a duration",
+    );
+
+    const stores = await publishProtected({ password: undefined });
+    await stores.metadataStore.update("Locked01", { pwa: true });
+    await expect(
+      setPublicationPassword({
+        publicationUrl: url,
+        password: "open-sesame",
+        metadataStore: stores.metadataStore,
+      }),
+    ).rejects.toThrow("PWA Publications cannot have a password");
+  });
+
+  it("never returns the password hash from the MCP list tool, and sets a password through the MCP tool", async () => {
+    const stores = await publishProtected();
+    const context = {
+      publisherEmail: "publisher@thefocus.ai",
+      publicBaseUrl: "https://artifacts.thefocus.ai",
+      publicationMetadataStore: stores.metadataStore,
+    } as unknown as McpToolContext;
+    const tool = (name: string) =>
+      artifactsMcpTools.find((spec) => spec.name === name)!;
+
+    const listed = JSON.stringify(
+      await tool("list_artifacts").run({}, context),
+    );
+    expect(listed).toContain('"hasPassword":true');
+    expect(listed).not.toContain("scrypt");
+
+    await tool("set_artifact_password").run(
+      { publicationUrl: url, clear: true },
+      context,
+    );
+    expect((await get(stores, url)).status).toBe(200);
+  });
+
+  it("forwards the Cookie header and the posted form through the Vercel Node adapter", async () => {
+    const stores = await publishProtected();
+    const call = async (init: {
+      method: string;
+      body?: string;
+      cookie?: string;
+    }) => {
+      const nodeRequest = Object.assign(
+        Readable.from(init.body ? [init.body] : []),
+        {
+          method: init.method,
+          url: "/api/a/Locked01",
+          headers: {
+            host: "artifacts.thefocus.ai",
+            "x-forwarded-proto": "https",
+            "content-type": "application/x-www-form-urlencoded",
+            ...(init.cookie ? { cookie: init.cookie } : {}),
+          },
+        },
+      ) as unknown as IncomingMessage;
+      const headers: Record<string, string> = {};
+      let body = "";
+      const nodeResponse = {
+        statusCode: 0,
+        setHeader: (key: string, value: string) => {
+          headers[key] = value;
+        },
+        end: (chunk?: Buffer) => {
+          body = chunk?.toString() ?? "";
+        },
+      };
+      await servePublicationNodeRequest(
+        nodeRequest,
+        nodeResponse as unknown as ServerResponse,
+        stores,
+      );
+      return { status: nodeResponse.statusCode, headers, body };
+    };
+
+    const unlock = await call({ method: "POST", body: "password=open-sesame" });
+    expect(unlock.status).toBe(303);
+    const opened = await call({
+      method: "GET",
+      cookie: unlock.headers["set-cookie"]!.split(";")[0],
+    });
+    expect(opened.status).toBe(200);
+    expect(opened.body).toContain("secret revenue");
+  });
+});
+
+describe("Publication password storage in Postgres", () => {
+  // Reads each statement the store sends and returns the value bound to a
+  // named column, so a column list and its parameters cannot drift apart.
+  function recordingSql() {
+    const statements: { sql: string; params: unknown[] }[] = [];
+    const row = {
+      opaque_id: "Locked01",
+      publication_url_path: "/a/Locked01",
+      publisher_email: "publisher@thefocus.ai",
+      status: "active",
+      active_manifest_ref: "m",
+      active_artifact_locator: "l",
+      local_source_path: null,
+      revision_window_expires_at: null,
+      title: null,
+      pwa: false,
+      password_hash: "scrypt$stored",
+      unlock_ttl_ms: "43200000",
+      created_at: "2026-11-26T00:00:00.000Z",
+      updated_at: "2026-11-26T00:00:00.000Z",
+      removed_at: null,
+    };
+    return {
+      statements,
+      async query<T>(sql: string, params: unknown[] = []) {
+        statements.push({ sql: sql.replace(/\s+/g, " ").trim(), params });
+        return {
+          rows: (sql.includes("count(*)") ? [{ count: "3" }] : [row]) as T[],
+        };
+      },
+    };
+  }
+
+  function insertedValue(
+    statement: { sql: string; params: unknown[] },
+    column: string,
+  ) {
+    const columns = statement.sql
+      .match(/insert into publications \((.*?)\)/)![1]!
+      .split(",")
+      .map((name) => name.trim());
+    return statement.params[columns.indexOf(column)];
+  }
+
+  // `column = $n`, or `column = case when $flag then $n else column end`.
+  // Returns { changed, value }: changed is false when the SQL keeps the
+  // stored value.
+  function updatedValue(
+    statement: { sql: string; params: unknown[] },
+    column: string,
+  ) {
+    const guarded = statement.sql.match(
+      new RegExp(
+        `${column} = case when \\$(\\d+) then \\$(\\d+) else ${column} end`,
+      ),
+    );
+    if (guarded) {
+      return {
+        changed: statement.params[Number(guarded[1]) - 1],
+        value: statement.params[Number(guarded[2]) - 1],
+      };
+    }
+    const position = statement.sql.match(
+      new RegExp(`${column} = \\$(\\d+)`),
+    )![1];
+    return { changed: true, value: statement.params[Number(position) - 1] };
+  }
+
+  it("binds the password hash and unlock limit to their own columns and reads them back", async () => {
+    const sql = recordingSql();
+    const store = new PostgresPublicationMetadataStore(sql);
+
+    const created = await store.create({
+      opaqueId: "Locked01",
+      publisherEmail: "publisher@thefocus.ai",
+      activeManifestRef: "m",
+      activeArtifactLocator: "l",
+      passwordHash: "scrypt$new",
+      unlockTtlMs: 3_600_000,
+    });
+    const insert = sql.statements[0]!;
+    expect(insertedValue(insert, "password_hash")).toBe("scrypt$new");
+    expect(insertedValue(insert, "unlock_ttl_ms")).toBe(3_600_000);
+    expect(insertedValue(insert, "pwa")).toBe(false);
+    expect(created.passwordHash).toBe("scrypt$stored");
+    expect(created.unlockTtlMs).toBe(43_200_000);
+
+    await store.update("Locked01", { passwordHash: null, unlockTtlMs: null });
+    const cleared = sql.statements.at(-1)!;
+    expect(updatedValue(cleared, "password_hash")).toEqual({
+      changed: true,
+      value: null,
+    });
+    expect(updatedValue(cleared, "unlock_ttl_ms")).toEqual({
+      changed: true,
+      value: null,
+    });
+
+    await store.update("Locked01", { passwordHash: "scrypt$next" });
+    const replaced = sql.statements.at(-1)!;
+    expect(updatedValue(replaced, "password_hash")).toEqual({
+      changed: true,
+      value: "scrypt$next",
+    });
+    expect(updatedValue(replaced, "unlock_ttl_ms").changed).toBe(false);
+
+    await store.update("Locked01", { unlockTtlMs: 60_000 });
+    const limited = sql.statements.at(-1)!;
+    expect(updatedValue(limited, "unlock_ttl_ms")).toEqual({
+      changed: true,
+      value: 60_000,
+    });
+    expect(updatedValue(limited, "password_hash").changed).toBe(false);
+
+    await store.update("Locked01", { title: "Renamed" });
+    const untouched = sql.statements.at(-1)!;
+    expect(updatedValue(untouched, "password_hash").changed).toBe(false);
+    expect(updatedValue(untouched, "unlock_ttl_ms").changed).toBe(false);
+    expect(updatedValue(untouched, "title").value).toBe("Renamed");
+    expect(updatedValue(untouched, "updated_at").value).toBeInstanceOf(Date);
+  });
+
+  it("counts and records unlock attempts by limit key", async () => {
+    const sql = recordingSql();
+    const store = new PostgresPublicationMetadataStore(sql, {
+      now: () => new Date("2026-11-26T12:00:00.000Z"),
+    });
+    const since = new Date("2026-11-26T11:59:00.000Z");
+
+    expect(await store.countUnlockAttempts("Locked01:203.0.113.9", since)).toBe(
+      3,
+    );
+    expect(sql.statements[0]).toEqual({
+      sql: "select count(*) as count from publication_unlock_attempts where limit_key = $1 and attempted_at >= $2",
+      params: ["Locked01:203.0.113.9", since],
+    });
+
+    await store.recordUnlockAttempt("Locked01:203.0.113.9");
+    expect(sql.statements.at(-1)).toEqual({
+      sql: "insert into publication_unlock_attempts (limit_key, attempted_at) values ($1, $2)",
+      params: ["Locked01:203.0.113.9", new Date("2026-11-26T12:00:00.000Z")],
+    });
+  });
+});
+
+describe("Publication password CLI", () => {
+  function capture() {
+    let text = "";
+    return {
+      stream: { write: (chunk: string) => ((text += chunk), true) },
+      text: () => text,
+    };
+  }
+
+  function fakeApiClient() {
+    return {
+      whoami: vi.fn(),
+      list: vi.fn(),
+      remove: vi.fn(),
+      setPassword: vi.fn(async (_token: string, publicationUrl: string) => ({
+        opaqueId: "Locked01",
+        publicationUrl,
+        status: "updated" as const,
+        hasPassword: true,
+        unlockTtlMs: null,
+      })),
+      publish: vi.fn(async (...args: unknown[]) => ({
+        hasPassword:
+          (args[2] as { password?: string } | undefined)?.password !==
+          undefined,
+        opaqueId: "Locked01",
+        publicationUrlPath: "/a/Locked01",
+        publicationUrl: url,
+        manifestRef: "m",
+        activeArtifactLocator: "l",
+        revisionWindowExpiresAt: new Date("2026-11-26T00:15:00.000Z"),
+        decision: "created" as const,
+        artifactPaths: [],
+      })),
+    };
+  }
+
+  const env = { THEFOCUS_ARTIFACTS_TOKEN: "tfai_pub_password" };
+
+  it("passes --password and --unlock-for from publish to the API", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "artifacts-password-cli-"));
+    const sourcePath = join(dir, "report.html");
+    await writeFile(sourcePath, secretBody);
+    const apiClient = fakeApiClient();
+
+    const exitCode = await runCli(
+      [
+        "publish",
+        sourcePath,
+        "--password",
+        "open-sesame",
+        "--unlock-for",
+        "7d",
+      ],
+      { env, configDir: dir, stdout: capture().stream, apiClient },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(apiClient.publish.mock.calls[0]).toMatchObject([
+      "tfai_pub_password",
+      sourcePath,
+      { password: "open-sesame", unlockFor: "7d" },
+    ]);
+  });
+
+  it("exits 1 and names the URL when the server does not confirm the password", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "artifacts-password-cli-"));
+    const sourcePath = join(dir, "report.html");
+    await writeFile(sourcePath, secretBody);
+    const apiClient = fakeApiClient();
+    // A server from before passwords ignores the field.
+    apiClient.publish.mockImplementationOnce(async () => ({
+      ...(await fakeApiClient().publish()),
+      hasPassword: false,
+    }));
+    const stderr = capture();
+
+    const exitCode = await runCli(
+      ["publish", sourcePath, "--password", "open-sesame"],
+      {
+        env,
+        configDir: dir,
+        stdout: capture().stream,
+        stderr: stderr.stream,
+        apiClient,
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderr.text()).toContain(`${url} was published WITHOUT a password`);
+  });
+
+  it("prints that a password is required, keeps = inside a password, and rejects a flag with no value", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "artifacts-password-cli-"));
+    const sourcePath = join(dir, "report.html");
+    await writeFile(sourcePath, secretBody);
+    const apiClient = fakeApiClient();
+    apiClient.publish.mockImplementation(async () => ({
+      ...(await fakeApiClient().publish()),
+      hasPassword: true,
+    }));
+    const stdout = capture();
+
+    await runCli(["publish", sourcePath, "--password=a=b=c"], {
+      env,
+      configDir: dir,
+      stdout: stdout.stream,
+      apiClient,
+    });
+    expect(apiClient.publish.mock.calls[0]![2]).toMatchObject({
+      password: "a=b=c",
+    });
+    expect(stdout.text()).toContain("\nPassword required to open.\n");
+
+    for (const argv of [
+      ["publish", sourcePath, "--password"],
+      ["publish", sourcePath, "--password", "--open"],
+      ["password", url, "--set"],
+      ["password", url, "--unlock-for"],
+    ]) {
+      const stderr = capture();
+      const exitCode = await runCli(argv, {
+        env,
+        configDir: dir,
+        stdout: capture().stream,
+        stderr: stderr.stream,
+        apiClient,
+        openBrowser: async () => {},
+      });
+      expect(exitCode).toBe(1);
+      expect(stderr.text()).toContain("requires a value.");
+    }
+    expect(apiClient.publish).toHaveBeenCalledTimes(1);
+    expect(apiClient.setPassword).not.toHaveBeenCalled();
+  });
+
+  it("sets and clears a password with the password command", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "artifacts-password-cli-"));
+    const apiClient = fakeApiClient();
+    const stdout = capture();
+
+    expect(
+      await runCli(["password", url, "--set", "open-sesame"], {
+        env,
+        configDir: dir,
+        stdout: stdout.stream,
+        apiClient,
+      }),
+    ).toBe(0);
+    expect(apiClient.setPassword).toHaveBeenLastCalledWith(
+      "tfai_pub_password",
+      url,
+      { password: "open-sesame", unlockFor: undefined },
+    );
+    expect(stdout.text()).toBe(`Password set on ${url}\n`);
+
+    await runCli(["password", url, "--clear"], {
+      env,
+      configDir: dir,
+      stdout: capture().stream,
+      apiClient,
+    });
+    expect(apiClient.setPassword).toHaveBeenLastCalledWith(
+      "tfai_pub_password",
+      url,
+      { password: null, unlockFor: undefined },
+    );
+
+    const stderr = capture();
+    expect(
+      await runCli(["password", url], {
+        env,
+        configDir: dir,
+        stdout: capture().stream,
+        stderr: stderr.stream,
+        apiClient,
+      }),
+    ).toBe(1);
+    expect(stderr.text()).toContain("--set <password>, --clear");
+    expect(apiClient.setPassword).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Publication password on a republish after the Revision Window", () => {
+  const later = () => new Date(Date.now() + 16 * 60_000);
+
+  it("copies the password and unlock limit to the new Publication URL", async () => {
+    const stores = await publishProtected({ unlockFor: "12h" });
+
+    const republished = await publishArtifact({
+      ...stores.publishInput,
+      opaqueIdFactory: () => "Locked02",
+      now: later,
+    });
+
+    expect(republished.decision).toBe("created-after-expiry");
+    expect(republished.hasPassword).toBe(true);
+    const newUrl = "https://artifacts.thefocus.ai/a/Locked02";
+    expect((await get(stores, newUrl)).status).toBe(401);
+    const unlock = await post(stores, newUrl, "open-sesame");
+    expect(unlock.status).toBe(303);
+    expect(unlock.headers.get("set-cookie")).toContain("Max-Age=43200");
+    expect((await get(stores, newUrl, cookieFrom(unlock))).status).toBe(200);
+  });
+
+  it("uses a new --password instead, and copies nothing with --new", async () => {
+    const stores = await publishProtected();
+
+    await publishArtifact({
+      ...stores.publishInput,
+      opaqueIdFactory: () => "Locked03",
+      password: "second-password",
+      now: later,
+    });
+    const replaced = "https://artifacts.thefocus.ai/a/Locked03";
+    expect((await post(stores, replaced, "open-sesame")).status).toBe(401);
+    expect((await post(stores, replaced, "second-password")).status).toBe(303);
+
+    const forced = await publishArtifact({
+      ...stores.publishInput,
+      opaqueIdFactory: () => "Locked04",
+      forceNew: true,
+      now: later,
+    });
+    expect(forced.hasPassword).toBe(false);
+    expect(
+      (await get(stores, "https://artifacts.thefocus.ai/a/Locked04")).status,
+    ).toBe(200);
+  });
+
+  it("copies the password on the server from the Publication URL the CLI sends", async () => {
+    const stores = await publishProtected();
+    const upload = await prepareArtifactUpload(stores.sourcePath);
+    const uploadInput = {
+      upload,
+      publisherEmail: "publisher@thefocus.ai",
+      publicBaseUrl: "https://artifacts.thefocus.ai",
+      metadataStore: stores.metadataStore,
+      contentStore: stores.contentStore,
+      // The API handler has no Local State: a new store per request.
+      stateStore: new InMemoryPublicationStateStore(),
+      keepPasswordFrom: url,
+    };
+
+    const kept = await publishUploadedArtifact({
+      ...uploadInput,
+      opaqueIdFactory: () => "Locked05",
+    });
+    expect(kept.hasPassword).toBe(true);
+    expect(
+      (await get(stores, "https://artifacts.thefocus.ai/a/Locked05")).status,
+    ).toBe(401);
+
+    const forced = await publishUploadedArtifact({
+      ...uploadInput,
+      forceNew: true,
+      opaqueIdFactory: () => "Locked06",
+    });
+    expect(forced.hasPassword).toBe(false);
+  });
+
+  it("sends the earlier Publication URL from the CLI only when the Revision Window is over", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "artifacts-password-keep-"));
+    const sourcePath = await realpath(
+      await writeFile(join(dir, "report.html"), secretBody).then(() =>
+        join(dir, "report.html"),
+      ),
+    );
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: URL, init: RequestInit) => {
+        sent.push(
+          JSON.parse(String((init.body as FormData).get("metadata"))) as Record<
+            string,
+            unknown
+          >,
+        );
+        return Response.json({
+          opaqueId: "Next0001",
+          publicationUrl: "https://artifacts.thefocus.ai/a/Next0001",
+          revisionWindowExpiresAt: new Date(0).toISOString(),
+          decision: "created",
+          manifestRef: "manifest",
+          activeArtifactLocator: "locator",
+          artifactPaths: [""],
+          publicationUrlPath: "/a/Next0001",
+        });
+      }),
+    );
+    const publish = () =>
+      runCli(["publish", sourcePath], {
+        env: { THEFOCUS_ARTIFACTS_TOKEN: "tfai_pub_password" },
+        configDir: dir,
+        stdout: new PassThrough(),
+      });
+    const state = new FilePublicationStateStore(dir);
+    const earlier = {
+      localSourcePath: sourcePath,
+      opaqueId: "Locked01",
+      publicationUrl: url,
+    };
+
+    try {
+      await state.set({ ...earlier, revisionWindowExpiresAt: new Date(0) });
+      expect(await publish()).toBe(0);
+      expect(sent[0]).toMatchObject({ keepPasswordFrom: url });
+      expect(sent[0]!.updatePublicationUrl).toBeUndefined();
+
+      await state.set({
+        ...earlier,
+        revisionWindowExpiresAt: new Date(Date.now() + 60_000),
+      });
+      expect(await publish()).toBe(0);
+      expect(sent[1]).toMatchObject({ updatePublicationUrl: url });
+      expect(sent[1]!.keepPasswordFrom).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("Password page on another domain", () => {
+  it("labels the page with the host that served it and carries no TheFocus.AI brand or font request", async () => {
+    const stores = await publishProtected();
+
+    const response = await get(
+      stores,
+      "https://artifacts.upperhandai.com/a/Locked01",
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(401);
+    expect(body).toContain('<p class="host">artifacts.upperhandai.com</p>');
+    expect(body.toLowerCase()).not.toContain("thefocus");
+    expect(body).not.toContain("fonts.googleapis.com");
+  });
+});
+
+describe("Publication password hardening", () => {
+  const later = () => new Date(Date.now() + 16 * 60_000);
+
+  it("redirects to a path on the same host after an unlock on a wildcard host", async () => {
+    const stores = await publishProtected();
+
+    const response = await post(
+      stores,
+      // The Node adapter decodes ?path=%5Cevil.com into this URL.
+      "https://locked01.artifacts.thefocus.ai/\\evil.com",
+      "open-sesame",
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/evil.com");
+  });
+
+  it("refuses a password form posted from another site without spending an attempt", async () => {
+    const stores = await publishProtected();
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const crossSite = await post(stores, url, "open-sesame", {
+        "sec-fetch-site": "cross-site",
+      });
+      expect(crossSite.status).toBe(403);
+      expect(crossSite.headers.get("set-cookie")).toBeNull();
+    }
+
+    const sameSite = await post(stores, url, "open-sesame", {
+      "sec-fetch-site": "same-origin",
+    });
+    expect(sameSite.status).toBe(303);
+  });
+
+  it("ends an unlock at the gate once the unlock limit has passed", async () => {
+    const stores = await publishProtected({ unlockFor: "30m" });
+    const cookie = cookieFrom(await post(stores, url, "open-sesame"));
+    expect((await get(stores, url, cookie)).status).toBe(200);
+
+    vi.useFakeTimers({ now: Date.now() + 31 * 60_000, toFake: ["Date"] });
+    try {
+      expect((await get(stores, url, cookie)).status).toBe(401);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("sends unlocked content with no-store on a wildcard host", async () => {
+    const stores = await publishProtected();
+    const wildcard = "https://locked01.artifacts.thefocus.ai/";
+    const cookie = cookieFrom(await post(stores, wildcard, "open-sesame"));
+
+    const opened = await get(stores, wildcard, cookie);
+
+    expect(opened.status).toBe(200);
+    expect(opened.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("keeps the unlock limit when a republish after the Revision Window passes a new password", async () => {
+    const stores = await publishProtected({ unlockFor: "12h" });
+
+    await publishArtifact({
+      ...stores.publishInput,
+      opaqueIdFactory: () => "Locked07",
+      password: "second-password",
+      now: later,
+    });
+
+    const unlock = await post(
+      stores,
+      "https://artifacts.thefocus.ai/a/Locked07",
+      "second-password",
+    );
+    expect(unlock.headers.get("set-cookie")).toContain("Max-Age=43200");
+  });
+
+  it("copies a password only from the same Publisher's Publication of the same Local Source", async () => {
+    const stores = await publishProtected();
+    const upload = await prepareArtifactUpload(stores.sourcePath);
+    const uploadInput = {
+      upload,
+      publisherEmail: "publisher@thefocus.ai",
+      publicBaseUrl: "https://artifacts.thefocus.ai",
+      metadataStore: stores.metadataStore,
+      contentStore: stores.contentStore,
+      stateStore: new InMemoryPublicationStateStore(),
+      keepPasswordFrom: url,
+    };
+
+    const otherPublisher = await publishUploadedArtifact({
+      ...uploadInput,
+      publisherEmail: "someone-else@thefocus.ai",
+      opaqueIdFactory: () => "Locked08",
+    });
+    expect(otherPublisher.hasPassword).toBe(false);
+
+    const otherSource = await publishUploadedArtifact({
+      ...uploadInput,
+      upload: { ...upload, localSourcePath: "/tmp/another-report.html" },
+      opaqueIdFactory: () => "Locked09",
+    });
+    expect(otherSource.hasPassword).toBe(false);
+
+    await expect(
+      publishUploadedArtifact({
+        ...uploadInput,
+        stateStore: new InMemoryPublicationStateStore(),
+        keepPasswordFrom: "not a url",
+      }),
+    ).rejects.toThrow("keepPasswordFrom must be a Publication URL.");
+  });
+
+  it("rejects an unlock limit over 400 days and a password that is not text", async () => {
+    await expect(publishProtected({ unlockFor: "401d" })).rejects.toThrow(
+      "--unlock-for can be at most 400d.",
+    );
+    expect(
+      (await publishProtected({ unlockFor: "400d" })).published.hasPassword,
+    ).toBe(true);
+    await expect(
+      publishProtected({ password: 12345 as unknown as string }),
+    ).rejects.toThrow("Password must be 4 to 200 characters.");
+  });
+
+  it("sends no earlier Publication URL for a stdin publish", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "artifacts-password-stdin-"));
+    const stdinPath = await realpath(
+      await writeFile(join(dir, "stdin.html"), secretBody).then(() =>
+        join(dir, "stdin.html"),
+      ),
+    );
+    await new FilePublicationStateStore(dir).set({
+      localSourcePath: stdinPath,
+      opaqueId: "Locked01",
+      publicationUrl: url,
+      revisionWindowExpiresAt: new Date(0),
+    });
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: URL, init: RequestInit) => {
+        sent.push(
+          JSON.parse(String((init.body as FormData).get("metadata"))) as Record<
+            string,
+            unknown
+          >,
+        );
+        return Response.json({
+          opaqueId: "Next0002",
+          publicationUrl: "https://artifacts.thefocus.ai/a/Next0002",
+          publicationUrlPath: "/a/Next0002",
+          revisionWindowExpiresAt: new Date(0).toISOString(),
+          decision: "created",
+          manifestRef: "manifest",
+          activeArtifactLocator: "locator",
+          artifactPaths: [""],
+        });
+      }),
+    );
+
+    try {
+      const stdin = Object.assign(Readable.from([secretBody]), {
+        isTTY: false,
+      }) as unknown as NodeJS.ReadStream;
+      const exitCode = await runCli(["publish", "-"], {
+        env: { THEFOCUS_ARTIFACTS_TOKEN: "tfai_pub_password" },
+        configDir: dir,
+        stdout: new PassThrough(),
+        stdin,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.keepPasswordFrom).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
