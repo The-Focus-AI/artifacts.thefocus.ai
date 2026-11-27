@@ -67,15 +67,27 @@ Artifact Path is served.
   would bypass it. No response sends a Blob URL to a viewer today, and a change
   that does would break the gate.
 - **POST on a Publication URL.** `servePublicationRequest` now accepts POST for
-  the password form. A Publication without a password still returns 405.
+  the password form. A Publication without a password still returns 405. A POST
+  to a URL with no Publication returns 404; before this it returned 405. A POST
+  that a browser marks `Sec-Fetch-Site: cross-site` gets 403 and does not count
+  as an attempt, so a form on another site cannot lock a viewer out.
 - **Headers reach the serve function.** `servePublicationNodeRequest` forwards
   request headers and the POST body. Before this, it forwarded the method only.
 - **A Local Source keeps its password.** Publishing the same Local Source after
   the Revision Window creates a new Publication. The CLI sends the earlier
   Publication URL from its Local State (`keepPasswordFrom`), and the server
-  copies that Publication's password hash and unlock limit to the new one.
-  `--password` replaces it. `--new` copies nothing. A publish with no Local
-  State (another computer, MCP) starts with no password.
+  copies that Publication's password hash and unlock limit to the new one. The
+  server copies only from a Publication with the same Publisher and the same
+  Local Source. `--password` replaces the password and keeps the limit. `--new`
+  copies nothing. A publish with no Local State (another computer, MCP) or from
+  stdin starts with no password.
+- **Known limits, not fixed here.** A password change that runs at the same
+  moment as a publish of the same Publication can write back the earlier
+  Artifact locator (the store reads the row, then writes it). Each password
+  POST inserts one row, including a refused one. Publications share one origin
+  under `/a/`, so a script in one Publication can request another in a browser
+  that has unlocked it. The client address is the first `x-forwarded-for`
+  entry; we have not checked how each serving domain sets that header.
 - **The password page has no brand.** Publications are served from more than
   one domain. The page's label is the request host, its colors follow the
   viewer's light or dark setting, and it loads no web fonts.

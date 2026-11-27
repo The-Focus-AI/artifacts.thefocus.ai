@@ -72,5 +72,37 @@ describe("publish over the hosted API", () => {
 
     const fresh = await publish({});
     expect(fresh.hasPassword).toBe(false);
+
+    const call = (action: string, init: RequestInit = {}) =>
+      handleArtifactsApiRequest(
+        new Request(
+          `https://artifacts.thefocus.ai/api/artifacts?action=${action}`,
+          {
+            ...init,
+            headers: {
+              authorization: `Bearer ${token}`,
+              "content-type": "application/json",
+            },
+          },
+        ),
+      );
+
+    // The list sends hasPassword and never the hash.
+    const listText = await (await call("list")).text();
+    expect(listText).toContain('"hasPassword":true');
+    expect(listText).not.toContain("scrypt$");
+    expect(listText).not.toContain("passwordHash");
+
+    const cleared = await call("password", {
+      method: "POST",
+      body: JSON.stringify({
+        publicationUrl: first.publicationUrl,
+        password: null,
+      }),
+    });
+    expect(await cleared.json()).toMatchObject({
+      status: "updated",
+      hasPassword: false,
+    });
   });
 });

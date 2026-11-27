@@ -157,7 +157,7 @@ export const artifactsMcpTools: McpToolSpec[] = [
         .string()
         .optional()
         .describe(
-          "How long a password unlock lasts: 30m, 12h, 7d, or never (the default).",
+          "How long a password unlock lasts: 30m, 12h, 7d, or never. Omit to keep the stored limit; a new password starts with no limit.",
         ),
     },
     async run(args, context) {
@@ -226,7 +226,7 @@ export const artifactsMcpTools: McpToolSpec[] = [
         .string()
         .optional()
         .describe(
-          "How long a password unlock lasts: 30m, 12h, 7d, or never (the default).",
+          "How long a password unlock lasts: 30m, 12h, 7d, or never. Omit to keep the stored limit; a new password starts with no limit.",
         ),
     },
     async run(args, context) {
@@ -295,7 +295,7 @@ export const artifactsMcpTools: McpToolSpec[] = [
         .string()
         .optional()
         .describe(
-          "How long a password unlock lasts: 30m, 12h, 7d, or never (the default).",
+          "How long a password unlock lasts: 30m, 12h, 7d, or never. Omit to keep the stored limit; a new password starts with no limit.",
         ),
     },
     async run(args, context) {

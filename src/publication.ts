@@ -538,6 +538,10 @@ export async function servePublicationRequest({
     { "content-type": contentType },
     { pwa: route.pwa, artifactPath: route.artifactPath },
   );
+  // Content behind a password is never stored by a browser or a cache.
+  if (publication.passwordHash !== null) {
+    headers.set("cache-control", "no-store");
+  }
   const body =
     isEntryPagePath(route.artifactPath) && isHtmlContentType(contentType)
       ? Buffer.from(
@@ -587,6 +591,11 @@ async function passwordGateResponse(input: {
     );
 
   if (request.method === "POST") {
+    // A form on another site must not spend the viewer's attempts. Browsers
+    // mark such a POST themselves; a page cannot change this header.
+    if (request.headers.get("sec-fetch-site") === "cross-site") {
+      return gatePage(403, "Enter the password on this page.");
+    }
     const limitKey = `${opaqueId}:${clientAddress(request)}`;
     const tooManyAttempts = () =>
       gatePage(429, "Too many attempts. Wait a minute, then try again.");
@@ -642,16 +651,29 @@ function clientAddress(request: Request): string {
 // from. The rewritten request loses a trailing slash (/a/{id}/ arrives as
 // /a/{id}), and ./relative links only resolve from the slash form, so the
 // Referer may put that one slash back. Nothing else from the Referer is used.
+//
+// A Location that starts with two slashes names another host, so the path
+// is reduced to one leading slash first.
 function unlockRedirectPath(request: Request): string {
-  const { host, pathname } = new URL(request.url);
+  const url = new URL(request.url);
+  const pathname = url.pathname.replace(/^\/{2,}/, "/");
   const referer = request.headers.get("referer");
   if (referer && URL.canParse(referer)) {
     const from = new URL(referer);
-    if (from.host === host && from.pathname === `${pathname}/`) {
+    if (from.host === url.host && from.pathname === `${pathname}/`) {
       return from.pathname;
     }
   }
   return pathname;
+}
+
+function earlierOpaqueIdFromUrl(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return opaqueIdFromPublicationUrl(url);
+  } catch {
+    throw new Error("keepPasswordFrom must be a Publication URL.");
+  }
 }
 
 async function passwordProtectionFields(
@@ -1411,29 +1433,40 @@ async function createFreshPublication(
     previousOpaqueId?: string;
   },
 ): Promise<PublishArtifactResult> {
-  // A Local Source that had a password keeps it at its new Publication URL.
-  const previousOpaqueId =
-    input.forceNew || input.password !== undefined
-      ? null
-      : (input.previousOpaqueId ??
-        (input.keepPasswordFrom
-          ? opaqueIdFromPublicationUrl(input.keepPasswordFrom)
-          : null));
-  const previous = previousOpaqueId
+  // A Local Source that had a password keeps it, and its unlock limit, at
+  // its new Publication URL. Only the same Publisher's earlier Publication
+  // of the same Local Source counts. --password and --unlock-for replace
+  // what was kept.
+  const previousOpaqueId = input.forceNew
+    ? null
+    : (input.previousOpaqueId ??
+      earlierOpaqueIdFromUrl(input.keepPasswordFrom));
+  const found = previousOpaqueId
     ? await input.metadataStore.getByOpaqueId(previousOpaqueId)
     : null;
-  const keptPasswordHash = previous?.passwordHash ?? null;
+  const previous =
+    found &&
+    found.passwordHash !== null &&
+    found.publisherEmail === input.publisherEmail &&
+    found.localSourcePath === input.localSourcePath
+      ? found
+      : null;
+  if (previous && input.pwa) {
+    throw new Error(
+      "The earlier Publication of this Local Source has a password, and PWA Publications cannot have one. Publish with --new --pwa.",
+    );
+  }
   // Before the upload, so a rejected password leaves nothing in Blob storage.
   const protection = {
-    ...(keptPasswordHash !== null
+    ...(previous
       ? {
-          passwordHash: keptPasswordHash,
-          unlockTtlMs: previous?.unlockTtlMs ?? null,
+          passwordHash: previous.passwordHash,
+          unlockTtlMs: previous.unlockTtlMs,
         }
       : {}),
     ...(await passwordProtectionFields(input, {
       pwa: input.pwa ?? false,
-      hasPassword: keptPasswordHash !== null,
+      hasPassword: previous !== null,
     })),
   };
   const opaqueId = input.opaqueIdFactory?.() ?? createOpaqueId();

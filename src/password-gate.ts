@@ -27,6 +27,7 @@ const maxCookieAgeSeconds = 400 * 24 * 60 * 60;
 
 export async function hashPassword(password: string): Promise<string> {
   if (
+    typeof password !== "string" ||
     password.length < minPasswordLength ||
     password.length > maxPasswordLength
   ) {
@@ -93,7 +94,12 @@ export function parseUnlockFor(
   const unit = { m: 60_000, h: 3_600_000, d: 86_400_000 }[
     match[2] as "m" | "h" | "d"
   ];
-  return Number(match[1]) * unit;
+  const ms = Number(match[1]) * unit;
+  // A browser keeps the unlock cookie for at most 400 days.
+  if (ms > maxCookieAgeSeconds * 1000) {
+    throw new Error("--unlock-for can be at most 400d.");
+  }
+  return ms;
 }
 
 // --- Unlock cookie ---------------------------------------------------------

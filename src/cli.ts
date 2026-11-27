@@ -154,6 +154,9 @@ export async function runCli(
           : await publishWithDefaultApiClient(sourcePath, token.token, {
               env,
               configDir,
+              // Every stdin publish shares one temp file, so the earlier
+              // stdin Publication may be an unrelated Artifact.
+              keepPassword: firstArg !== "-",
               publicBaseUrl: options["base-url"],
               entryPage: options["entry-page"],
               forceNew: Object.hasOwn(options, "new"),
@@ -166,6 +169,13 @@ export async function runCli(
       stdout.write(
         `${publishArtifactSummary(result, { verbose: options.verbose === "true" })}\n`,
       );
+      // A server from before passwords ignores --password and publishes
+      // an open URL. Fail loudly instead of reporting success.
+      if (options.password !== undefined && result.hasPassword !== true) {
+        throw new Error(
+          `${result.publicationUrl} was published WITHOUT a password: the server did not confirm it. Remove the Publication, or set the password with the password command.`,
+        );
+      }
       if (Object.hasOwn(options, "open")) {
         const openFn = dependencies.openBrowser ?? openDefaultBrowser;
         await openFn(result.publicationUrl);
@@ -668,6 +678,7 @@ async function publishWithDefaultApiClient(
     pwa?: boolean;
     password?: string;
     unlockFor?: string;
+    keepPassword: boolean;
   },
 ) {
   const stateStore = new FilePublicationStateStore(options.configDir);
@@ -695,9 +706,10 @@ async function publishWithDefaultApiClient(
     unlockFor: options.unlockFor,
     // After the Revision Window the server creates a new Publication. It
     // copies the password of the one this Local Source had before.
-    keepPasswordFrom: updatePublicationUrl
-      ? undefined
-      : existingState?.publicationUrl,
+    keepPasswordFrom:
+      updatePublicationUrl || !options.keepPassword
+        ? undefined
+        : existingState?.publicationUrl,
   });
   try {
     await stateStore.set({
