@@ -173,9 +173,12 @@ function parseCookies(header: string | null): Record<string, string> {
 // --- Page ------------------------------------------------------------------
 //
 // The page carries nothing from the Publication: no Title, no Open Graph
-// tags, no Artifact content.
+// tags, no Artifact content. Publications are served from more than one
+// domain, so the page has no brand of its own: the label is the host that
+// served the request, the colors follow the reader's light or dark setting,
+// and the fonts are the system's (no request to a font host).
 
-export function passwordPage(error: string | null): string {
+export function passwordPage(error: string | null, host: string): string {
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -183,19 +186,29 @@ export function passwordPage(error: string | null): string {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Password required</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Courier+Prime&family=Inter:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap"
-      rel="stylesheet"
-    />
     <style>
       :root {
-        --paper: #faf9f6;
-        --ink: #161616;
-        --petrol: #0e3b46;
-        --vermilion: #c3471d;
-        --border: #d4d3cf;
+        color-scheme: light dark;
+        --page: #fbfbfa;
+        --text: #17181a;
+        --muted: #5d6066;
+        --field: #ffffff;
+        --border: #cfd1d4;
+        --button: #17181a;
+        --button-text: #ffffff;
+        --error: #b3261e;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page: #111214;
+          --text: #ececec;
+          --muted: #9c9fa5;
+          --field: #1a1b1e;
+          --border: #3a3c41;
+          --button: #ececec;
+          --button-text: #111214;
+          --error: #f2877f;
+        }
       }
       * { box-sizing: border-box; }
       body {
@@ -204,46 +217,47 @@ export function passwordPage(error: string | null): string {
         display: grid;
         place-items: center;
         padding: 24px;
-        background: var(--paper);
-        color: var(--ink);
-        font: 16px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+        background: var(--page);
+        color: var(--text);
+        font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
       }
       main { width: 100%; max-width: 380px; }
-      .eyebrow {
-        margin: 0 0 20px;
-        font: 12px/1 "Courier Prime", ui-monospace, monospace;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        color: var(--petrol);
+      .host {
+        margin: 0 0 18px;
+        font: 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--muted);
+        overflow-wrap: anywhere;
       }
       h1 {
-        margin: 0 0 10px;
-        font: 600 30px/1.15 "Source Serif 4", Georgia, serif;
-        letter-spacing: -0.01em;
+        margin: 0 0 8px;
+        font-size: 26px;
+        line-height: 1.2;
+        font-weight: 650;
+        letter-spacing: -0.015em;
       }
-      p { margin: 0 0 22px; color: rgb(22 22 22 / 0.7); }
-      p.error { margin: -8px 0 18px; color: var(--vermilion); }
+      p { margin: 0 0 22px; color: var(--muted); }
+      p.error { margin: -8px 0 18px; color: var(--error); }
       form { display: flex; gap: 8px; }
       input {
         flex: 1;
         min-width: 0;
         padding: 11px 12px;
         border: 1px solid var(--border);
-        border-radius: 4px;
-        background: #fff;
+        border-radius: 6px;
+        background: var(--field);
         color: inherit;
         font: inherit;
       }
       input:focus-visible, button:focus-visible {
-        outline: 2px solid var(--petrol);
+        outline: 2px solid var(--text);
         outline-offset: 2px;
       }
       button {
         padding: 11px 20px;
         border: 0;
-        border-radius: 4px;
-        background: var(--petrol);
-        color: var(--paper);
+        border-radius: 6px;
+        background: var(--button);
+        color: var(--button-text);
         font: inherit;
         font-weight: 600;
         cursor: pointer;
@@ -252,10 +266,10 @@ export function passwordPage(error: string | null): string {
   </head>
   <body>
     <main>
-      <p class="eyebrow">TheFocus.AI Artifacts</p>
+      <p class="host">${escapeHtml(host)}</p>
       <h1>This page needs a password</h1>
       <p>Enter the password you were given with the link.</p>
-      ${error ? `<p class="error" role="alert">${error}</p>` : ""}
+      ${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
       <form method="post">
         <input type="password" name="password" aria-label="Password" autocomplete="current-password" autofocus required />
         <button type="submit">Open</button>
@@ -264,4 +278,12 @@ export function passwordPage(error: string | null): string {
   </body>
 </html>
 `;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }

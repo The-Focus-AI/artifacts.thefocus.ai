@@ -693,6 +693,11 @@ async function publishWithDefaultApiClient(
     pwa: options.pwa,
     password: options.password,
     unlockFor: options.unlockFor,
+    // After the Revision Window the server creates a new Publication. It
+    // copies the password of the one this Local Source had before.
+    keepPasswordFrom: updatePublicationUrl
+      ? undefined
+      : existingState?.publicationUrl,
   });
   try {
     await stateStore.set({

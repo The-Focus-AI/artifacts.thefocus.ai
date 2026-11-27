@@ -114,7 +114,7 @@ npx @the-focus-ai/artifacts password https://artifacts.thefocus.ai/a/Ab3xY9kQ --
 - Use the password the user gives you. If they give none, generate a random one and tell them what it is.
 - Return the Publication URL and the password, and tell the user to send them separately.
 - Omit `--password` on a later publish to keep the current password. Changing or clearing it ends every existing unlock.
-- A fresh Publication URL has no password. Pass `--password` again after the Revision Window, or use `--update <Publication URL>`.
+- After the Revision Window, publishing the same Local Source from the same computer creates a new Publication URL with the same password. `--new` creates one with no password. Check for `Password required to open.` in the output.
 - PWA Publications and Living Docs cannot have a password.
 - MCP: `publish_artifact` and `update_artifact` take `password` and `unlockFor`. `set_artifact_password` sets or clears one.
 

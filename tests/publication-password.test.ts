@@ -1,8 +1,8 @@
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -14,11 +14,14 @@ import {
   InMemoryPublicationMetadataStore,
   InMemoryPublicationStateStore,
   PostgresPublicationMetadataStore,
+  prepareArtifactUpload,
   publishArtifact,
+  publishUploadedArtifact,
   servePublicationRequest,
   setPublicationPassword,
   type McpToolContext,
 } from "../src/index.js";
+import { FilePublicationStateStore } from "../src/local-config.js";
 import { isUnlocked, unlockCookie } from "../src/password-gate.js";
 
 const secretBody = "<title>Q3 board numbers</title><h1>secret revenue</h1>";
@@ -707,5 +710,161 @@ describe("Publication password CLI", () => {
     ).toBe(1);
     expect(stderr.text()).toContain("--set <password>, --clear");
     expect(apiClient.setPassword).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Publication password on a republish after the Revision Window", () => {
+  const later = () => new Date(Date.now() + 16 * 60_000);
+
+  it("copies the password and unlock limit to the new Publication URL", async () => {
+    const stores = await publishProtected({ unlockFor: "12h" });
+
+    const republished = await publishArtifact({
+      ...stores.publishInput,
+      opaqueIdFactory: () => "Locked02",
+      now: later,
+    });
+
+    expect(republished.decision).toBe("created-after-expiry");
+    expect(republished.hasPassword).toBe(true);
+    const newUrl = "https://artifacts.thefocus.ai/a/Locked02";
+    expect((await get(stores, newUrl)).status).toBe(401);
+    const unlock = await post(stores, newUrl, "open-sesame");
+    expect(unlock.status).toBe(303);
+    expect(unlock.headers.get("set-cookie")).toContain("Max-Age=43200");
+    expect((await get(stores, newUrl, cookieFrom(unlock))).status).toBe(200);
+  });
+
+  it("uses a new --password instead, and copies nothing with --new", async () => {
+    const stores = await publishProtected();
+
+    await publishArtifact({
+      ...stores.publishInput,
+      opaqueIdFactory: () => "Locked03",
+      password: "second-password",
+      now: later,
+    });
+    const replaced = "https://artifacts.thefocus.ai/a/Locked03";
+    expect((await post(stores, replaced, "open-sesame")).status).toBe(401);
+    expect((await post(stores, replaced, "second-password")).status).toBe(303);
+
+    const forced = await publishArtifact({
+      ...stores.publishInput,
+      opaqueIdFactory: () => "Locked04",
+      forceNew: true,
+      now: later,
+    });
+    expect(forced.hasPassword).toBe(false);
+    expect(
+      (await get(stores, "https://artifacts.thefocus.ai/a/Locked04")).status,
+    ).toBe(200);
+  });
+
+  it("copies the password on the server from the Publication URL the CLI sends", async () => {
+    const stores = await publishProtected();
+    const upload = await prepareArtifactUpload(stores.sourcePath);
+    const uploadInput = {
+      upload,
+      publisherEmail: "publisher@thefocus.ai",
+      publicBaseUrl: "https://artifacts.thefocus.ai",
+      metadataStore: stores.metadataStore,
+      contentStore: stores.contentStore,
+      // The API handler has no Local State: a new store per request.
+      stateStore: new InMemoryPublicationStateStore(),
+      keepPasswordFrom: url,
+    };
+
+    const kept = await publishUploadedArtifact({
+      ...uploadInput,
+      opaqueIdFactory: () => "Locked05",
+    });
+    expect(kept.hasPassword).toBe(true);
+    expect(
+      (await get(stores, "https://artifacts.thefocus.ai/a/Locked05")).status,
+    ).toBe(401);
+
+    const forced = await publishUploadedArtifact({
+      ...uploadInput,
+      forceNew: true,
+      opaqueIdFactory: () => "Locked06",
+    });
+    expect(forced.hasPassword).toBe(false);
+  });
+
+  it("sends the earlier Publication URL from the CLI only when the Revision Window is over", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "artifacts-password-keep-"));
+    const sourcePath = await realpath(
+      await writeFile(join(dir, "report.html"), secretBody).then(() =>
+        join(dir, "report.html"),
+      ),
+    );
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: URL, init: RequestInit) => {
+        sent.push(
+          JSON.parse(String((init.body as FormData).get("metadata"))) as Record<
+            string,
+            unknown
+          >,
+        );
+        return Response.json({
+          opaqueId: "Next0001",
+          publicationUrl: "https://artifacts.thefocus.ai/a/Next0001",
+          revisionWindowExpiresAt: new Date(0).toISOString(),
+          decision: "created",
+          manifestRef: "manifest",
+          activeArtifactLocator: "locator",
+          artifactPaths: [""],
+          publicationUrlPath: "/a/Next0001",
+        });
+      }),
+    );
+    const publish = () =>
+      runCli(["publish", sourcePath], {
+        env: { THEFOCUS_ARTIFACTS_TOKEN: "tfai_pub_password" },
+        configDir: dir,
+        stdout: new PassThrough(),
+      });
+    const state = new FilePublicationStateStore(dir);
+    const earlier = {
+      localSourcePath: sourcePath,
+      opaqueId: "Locked01",
+      publicationUrl: url,
+    };
+
+    try {
+      await state.set({ ...earlier, revisionWindowExpiresAt: new Date(0) });
+      expect(await publish()).toBe(0);
+      expect(sent[0]).toMatchObject({ keepPasswordFrom: url });
+      expect(sent[0]!.updatePublicationUrl).toBeUndefined();
+
+      await state.set({
+        ...earlier,
+        revisionWindowExpiresAt: new Date(Date.now() + 60_000),
+      });
+      expect(await publish()).toBe(0);
+      expect(sent[1]).toMatchObject({ updatePublicationUrl: url });
+      expect(sent[1]!.keepPasswordFrom).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("Password page on another domain", () => {
+  it("labels the page with the host that served it and carries no TheFocus.AI brand or font request", async () => {
+    const stores = await publishProtected();
+
+    const response = await get(
+      stores,
+      "https://artifacts.upperhandai.com/a/Locked01",
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(401);
+    expect(body).toContain('<p class="host">artifacts.upperhandai.com</p>');
+    expect(body.toLowerCase()).not.toContain("thefocus");
+    expect(body).not.toContain("fonts.googleapis.com");
   });
 });

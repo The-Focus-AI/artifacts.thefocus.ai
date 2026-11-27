@@ -93,7 +93,7 @@ npx @the-focus-ai/artifacts password https://artifacts.thefocus.ai/a/Ab3xY9kQ --
 
 What a viewer sees:
 
-- The Publication URL shows a password page until the viewer enters the password. The page shows no Title, link card or Artifact content.
+- The Publication URL shows a password page until the viewer enters the password. The page shows no Title, link card or Artifact content. Its only label is the domain that served it, so it reads the same on every domain that serves Publications.
 - The password covers every Artifact Path of a directory Artifact, not only the Entry Page.
 - A correct password sets one cookie for that Publication. With no `--unlock-for`, the viewer stays unlocked until the password changes.
 - Changing or clearing the password ends every existing unlock.
@@ -102,7 +102,7 @@ What a viewer sees:
 Limits:
 
 - PWA Publications (`--pwa`) cannot have a password.
-- A fresh Publication does not inherit a password. After the Revision Window, publishing the same Local Source creates a new Publication URL with no password unless you pass `--password` again. `publish --update <Publication URL>` keeps the password.
+- A Local Source keeps its password. After the Revision Window, publishing the same Local Source creates a new Publication URL with the same password and unlock limit, and `publish` prints `Password required to open.` Pass `--password` to change it. `publish --new` creates a Publication with no password. The CLI finds the earlier Publication in its Local State, so a publish from another computer or through MCP starts with no password.
 - `--password` puts the password in your shell history. Send the password to viewers separately from the URL.
 - Any Publisher can set or clear the password on any Publication, the same as Removal.
 - Living Docs have no passwords.

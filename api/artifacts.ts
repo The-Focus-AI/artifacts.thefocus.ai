@@ -167,6 +167,7 @@ export async function handleArtifactsApiRequest(
           pwa: options.pwa,
           password: options.password,
           unlockFor: options.unlockFor,
+          keepPasswordFrom: options.keepPasswordFrom,
         }),
       );
     }
@@ -190,6 +191,7 @@ async function uploadFromFormData(form: FormData): Promise<{
     pwa?: boolean;
     password?: string;
     unlockFor?: string;
+    keepPasswordFrom?: string;
   };
 }> {
   const metadataValue = form.get("metadata");
@@ -208,6 +210,7 @@ async function uploadFromFormData(form: FormData): Promise<{
     pwa?: boolean;
     password?: string;
     unlockFor?: string;
+    keepPasswordFrom?: string;
   };
   const artifactPaths = form.getAll("artifactPaths").filter(isString);
   const blobs = form.getAll("files").filter(isFile);
@@ -236,6 +239,7 @@ async function uploadFromFormData(form: FormData): Promise<{
       pwa: metadata.pwa,
       password: metadata.password,
       unlockFor: metadata.unlockFor,
+      keepPasswordFrom: metadata.keepPasswordFrom,
     },
   };
 }

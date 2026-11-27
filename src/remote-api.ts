@@ -48,6 +48,7 @@ export interface RemotePublishOptions {
   pwa?: boolean;
   password?: string;
   unlockFor?: string;
+  keepPasswordFrom?: string;
 }
 
 export class HttpArtifactApiClient implements ArtifactApiClient {
@@ -371,6 +372,7 @@ export function artifactUploadForm(
       pwa: options.pwa ?? false,
       password: options.password,
       unlockFor: options.unlockFor,
+      keepPasswordFrom: options.keepPasswordFrom,
     }),
   );
   for (const file of upload.files) {

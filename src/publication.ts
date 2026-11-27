@@ -181,6 +181,12 @@ export interface PublishArtifactInput {
   pwa?: boolean;
   /** Sets or replaces the Publication password. Omitted = unchanged. */
   password?: string;
+  /**
+   * The Publication URL this Local Source was published at before. A new
+   * Publication created without `password` copies that one's password.
+   * Ignored with `forceNew`.
+   */
+  keepPasswordFrom?: string;
   /** How long an unlock lasts (`12h`, `7d`, `never`). Omitted = unchanged. */
   unlockFor?: string;
 }
@@ -255,6 +261,12 @@ export interface PublishUploadedArtifactInput {
   pwa?: boolean;
   /** Sets or replaces the Publication password. Omitted = unchanged. */
   password?: string;
+  /**
+   * The Publication URL this Local Source was published at before. A new
+   * Publication created without `password` copies that one's password.
+   * Ignored with `forceNew`.
+   */
+  keepPasswordFrom?: string;
   /** How long an unlock lasts (`12h`, `7d`, `never`). Omitted = unchanged. */
   unlockFor?: string;
 }
@@ -415,6 +427,7 @@ export async function publishArtifact(
         packaged,
         revisionWindowExpiresAt,
         decision: "created-after-expiry",
+        previousOpaqueId: existingState.opaqueId,
       });
     }
     return createFreshPublication({
@@ -423,6 +436,7 @@ export async function publishArtifact(
       packaged,
       revisionWindowExpiresAt,
       decision: "created-after-removed-local-state",
+      previousOpaqueId: existingState.opaqueId,
     });
   }
 
@@ -560,12 +574,17 @@ async function passwordGateResponse(input: {
   const { request, publication } = input;
   const { opaqueId, passwordHash, unlockTtlMs } = publication;
   const gatePage = (status: number, error: string | null) =>
-    new Response(request.method === "HEAD" ? null : passwordPage(error), {
-      status,
-      headers: publicationSafetyHeaders({
-        "content-type": "text/html; charset=utf-8",
-      }),
-    });
+    new Response(
+      request.method === "HEAD"
+        ? null
+        : passwordPage(error, new URL(request.url).hostname),
+      {
+        status,
+        headers: publicationSafetyHeaders({
+          "content-type": "text/html; charset=utf-8",
+        }),
+      },
+    );
 
   if (request.method === "POST") {
     const limitKey = `${opaqueId}:${clientAddress(request)}`;
@@ -1129,6 +1148,7 @@ export async function publishUploadedArtifact(
     pwa: input.pwa,
     password: input.password,
     unlockFor: input.unlockFor,
+    keepPasswordFrom: input.keepPasswordFrom,
   } satisfies PublishArtifactInput;
 
   const result = input.updatePublicationUrl
@@ -1364,11 +1384,13 @@ async function publishUploadedArtifactByState(
       return createFreshPublication({
         ...input,
         decision: "created-after-expiry",
+        previousOpaqueId: existingState.opaqueId,
       });
     }
     return createFreshPublication({
       ...input,
       decision: "created-after-removed-local-state",
+      previousOpaqueId: existingState.opaqueId,
     });
   }
 
@@ -1386,13 +1408,34 @@ async function createFreshPublication(
     };
     revisionWindowExpiresAt: Date;
     decision: PublishArtifactDecision;
+    previousOpaqueId?: string;
   },
 ): Promise<PublishArtifactResult> {
+  // A Local Source that had a password keeps it at its new Publication URL.
+  const previousOpaqueId =
+    input.forceNew || input.password !== undefined
+      ? null
+      : (input.previousOpaqueId ??
+        (input.keepPasswordFrom
+          ? opaqueIdFromPublicationUrl(input.keepPasswordFrom)
+          : null));
+  const previous = previousOpaqueId
+    ? await input.metadataStore.getByOpaqueId(previousOpaqueId)
+    : null;
+  const keptPasswordHash = previous?.passwordHash ?? null;
   // Before the upload, so a rejected password leaves nothing in Blob storage.
-  const protection = await passwordProtectionFields(input, {
-    pwa: input.pwa ?? false,
-    hasPassword: false,
-  });
+  const protection = {
+    ...(keptPasswordHash !== null
+      ? {
+          passwordHash: keptPasswordHash,
+          unlockTtlMs: previous?.unlockTtlMs ?? null,
+        }
+      : {}),
+    ...(await passwordProtectionFields(input, {
+      pwa: input.pwa ?? false,
+      hasPassword: keptPasswordHash !== null,
+    })),
+  };
   const opaqueId = input.opaqueIdFactory?.() ?? createOpaqueId();
   const packaged = await input.packaged.writeForPublication(opaqueId);
   const title = input.title ?? packaged.derivedTitle ?? null;

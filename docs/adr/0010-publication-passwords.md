@@ -70,10 +70,15 @@ Artifact Path is served.
   the password form. A Publication without a password still returns 405.
 - **Headers reach the serve function.** `servePublicationNodeRequest` forwards
   request headers and the POST body. Before this, it forwarded the method only.
-- **Fresh Publications have no password.** A password belongs to one
-  Publication. Publishing the same Local Source after the Revision Window
-  creates a new Publication without one, unless `--password` is passed again.
-  An update keeps it.
+- **A Local Source keeps its password.** Publishing the same Local Source after
+  the Revision Window creates a new Publication. The CLI sends the earlier
+  Publication URL from its Local State (`keepPasswordFrom`), and the server
+  copies that Publication's password hash and unlock limit to the new one.
+  `--password` replaces it. `--new` copies nothing. A publish with no Local
+  State (another computer, MCP) starts with no password.
+- **The password page has no brand.** Publications are served from more than
+  one domain. The page's label is the request host, its colors follow the
+  viewer's light or dark setting, and it loads no web fonts.
 - **The attempt limit is per address.** An attacker with many addresses gets
   ten tries per minute from each. Passwords are 4 to 200 characters; short passwords are
   weak against that.
